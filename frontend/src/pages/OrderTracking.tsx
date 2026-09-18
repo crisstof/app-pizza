@@ -137,7 +137,7 @@ export default function OrderTracking() {
             <PizzaIcon className="size-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Suivi de commande</h1>
+            <h1 className="font-display text-2xl tracking-wide">Suivi de commande</h1>
             <p className="text-sm text-muted-foreground">Réf {order.id.slice(0, 8)}</p>
           </div>
         </div>

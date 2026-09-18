@@ -67,7 +67,9 @@ Order creation runs inside a single `prisma.$transaction`: it re-reads the slot,
 
 The `@/` import alias maps to `frontend/src/` (configured in both `vite.config.ts` and the two `tsconfig*.json` files — keep them in sync if it ever changes).
 
-Theme colors are CSS variables in `frontend/src/index.css` (HSL triples consumed via `hsl(var(--...))`), with a `@media (prefers-color-scheme: dark)` override block — follow that pattern for any new theme tokens rather than hardcoding colors in components.
+Theme colors are CSS variables in `frontend/src/index.css`, stored as raw hex and consumed directly via `var(--...)` (not wrapped in `hsl()`), with a `@media (prefers-color-scheme: dark)` override block — follow that pattern for any new theme tokens rather than hardcoding colors in components.
+
+The app carries two color/font themes in the same stylesheet: the default `:root` theme (warm red/gold, Playfair Display SC + Karla) for the customer-facing pages, and a `.theme-staff` class override (blue/orange, Plus Jakarta Sans) applied to the pizzaiolo dashboard's root element. A themed subtree must set its own `background`/`color` (not just redeclare the CSS variables) — descendants otherwise inherit the *computed* color from `body`, which resolved `var(--foreground)` before the override was in scope.
 
 ## Environment
 

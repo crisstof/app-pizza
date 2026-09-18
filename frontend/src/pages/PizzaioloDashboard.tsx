@@ -138,11 +138,11 @@ export default function PizzaioloDashboard() {
   const slots = [...bySlot.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
   return (
-    <div className="min-h-screen">
+    <div className="theme-staff min-h-screen">
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-6">
           <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10">
               <ChefHat className="size-6 text-primary" />
             </div>
             <div>

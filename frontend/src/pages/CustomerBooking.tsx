@@ -23,7 +23,7 @@ function SectionTitle({ step, title }: { step: number; title: string }) {
       <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
         {step}
       </span>
-      <h2 className="text-lg font-semibold">{title}</h2>
+      <h2 className="font-display text-lg tracking-wide">{title}</h2>
     </div>
   );
 }
@@ -129,7 +129,7 @@ export default function CustomerBooking() {
               <PizzaIcon className="size-6 text-primary" />
             </motion.div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">App Pizza</h1>
+              <h1 className="font-display text-2xl tracking-wide">App Pizza</h1>
               <p className="text-sm text-muted-foreground">
                 Réserve ton créneau et commande en ligne
               </p>

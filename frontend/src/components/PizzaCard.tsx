@@ -34,7 +34,7 @@ export function PizzaCard({
       >
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-semibold leading-tight">{pizza.name}</h3>
+            <h3 className="font-display text-base leading-tight">{pizza.name}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {pizza.description}
             </p>

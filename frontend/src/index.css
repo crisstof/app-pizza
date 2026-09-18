@@ -1,77 +1,126 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Karla", system-ui, sans-serif;
+  --font-display: "Playfair Display SC", Georgia, serif;
 }
 
+/* Customer app: warm restaurant palette (deep red + gold). */
 :root {
-  --background: 30 60% 97%;
-  --foreground: 20 30% 12%;
-  --card: 0 0% 100%;
-  --card-foreground: 20 30% 12%;
-  --primary: 16 85% 55%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 30 20% 94%;
-  --secondary-foreground: 20 30% 12%;
-  --muted: 30 15% 92%;
-  --muted-foreground: 25 15% 45%;
-  --accent: 16 85% 55%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 30 15% 88%;
-  --input: 30 15% 88%;
-  --ring: 16 85% 55%;
+  --background: #fef2f2;
+  --foreground: #450a0a;
+  --card: #ffffff;
+  --card-foreground: #450a0a;
+  --primary: #dc2626;
+  --primary-foreground: #ffffff;
+  --secondary: #f87171;
+  --secondary-foreground: #ffffff;
+  --muted: #fde4e1;
+  --muted-foreground: #8a5a52;
+  --accent: #a16207;
+  --accent-foreground: #ffffff;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --border: #fecaca;
+  --input: #fecaca;
+  --ring: #dc2626;
   --radius: 0.75rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: 20 20% 8%;
-    --foreground: 30 20% 95%;
-    --card: 20 18% 12%;
-    --card-foreground: 30 20% 95%;
-    --primary: 16 85% 58%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 20 15% 18%;
-    --secondary-foreground: 30 20% 95%;
-    --muted: 20 15% 16%;
-    --muted-foreground: 30 10% 65%;
-    --accent: 16 85% 58%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 62% 45%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 20 15% 20%;
-    --input: 20 15% 20%;
-    --ring: 16 85% 58%;
+    --background: #1f0f0f;
+    --foreground: #fde4e1;
+    --card: #2b1414;
+    --card-foreground: #fde4e1;
+    --primary: #ef4444;
+    --primary-foreground: #1f0f0f;
+    --secondary: #7f1d1d;
+    --secondary-foreground: #fde4e1;
+    --muted: #3a1a1a;
+    --muted-foreground: #c99a92;
+    --accent: #d4a017;
+    --accent-foreground: #1f0f0f;
+    --destructive: #f87171;
+    --destructive-foreground: #1f0f0f;
+    --border: #4a1f1f;
+    --input: #4a1f1f;
+    --ring: #ef4444;
+  }
+}
+
+/* Pizzaiolo dashboard: operational palette (blue + orange), scoped to
+   this subtree so it reads as a distinct tool from the customer app. */
+.theme-staff {
+  background: var(--background);
+  color: var(--foreground);
+  --background: #eff6ff;
+  --foreground: #1e293b;
+  --card: #ffffff;
+  --card-foreground: #1e293b;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #3b82f6;
+  --secondary-foreground: #ffffff;
+  --muted: #e9eff8;
+  --muted-foreground: #475569;
+  --accent: #ea580c;
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #bfdbfe;
+  --input: #bfdbfe;
+  --ring: #2563eb;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-staff {
+    --background: #0b1220;
+    --foreground: #e2e8f0;
+    --card: #131b2e;
+    --card-foreground: #e2e8f0;
+    --primary: #3b82f6;
+    --primary-foreground: #0b1220;
+    --secondary: #1d4ed8;
+    --secondary-foreground: #e2e8f0;
+    --muted: #1a2436;
+    --muted-foreground: #93a5c4;
+    --accent: #fb923c;
+    --accent-foreground: #0b1220;
+    --destructive: #ef4444;
+    --destructive-foreground: #0b1220;
+    --border: #223049;
+    --input: #223049;
+    --ring: #3b82f6;
   }
 }
 
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 }
 
 body {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background: var(--background);
+  color: var(--foreground);
   font-family: var(--font-sans);
 }
