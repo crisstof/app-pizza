@@ -70,12 +70,19 @@ function extractErrorMessage(data: unknown): string {
   return "Erreur lors de la commande.";
 }
 
-export async function createOrder(input: CreateOrderInput) {
+export async function createOrder(input: CreateOrderInput): Promise<Order> {
   const res = await fetch(`${API_URL}/api/orders`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+  const data = await res.json();
+  if (!res.ok) throw new Error(extractErrorMessage(data));
+  return data;
+}
+
+export async function fetchOrder(orderId: string): Promise<Order> {
+  const res = await fetch(`${API_URL}/api/orders/${orderId}`);
   const data = await res.json();
   if (!res.ok) throw new Error(extractErrorMessage(data));
   return data;
