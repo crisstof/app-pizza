@@ -20,8 +20,8 @@ export type TimeSlot = {
 export type OrderItemInput = { pizzaId: string; quantity: number };
 
 export type CreateOrderInput = {
-  clientName: string;
-  clientEmail: string;
+  clientName?: string;
+  clientEmail?: string;
   clientPhone?: string;
   timeSlotId: string;
   items: OrderItemInput[];
@@ -39,23 +39,17 @@ export type Order = {
   id: string;
   status: OrderStatus;
   totalCents: number;
+  discountCents: number;
+  pointsEarned: number;
   createdAt: string;
   client: { name: string; email: string; phone: string | null };
   timeSlot: TimeSlot;
   items: { id: string; quantity: number; pizza: Pizza }[];
 };
 
-export async function fetchPizzas(): Promise<Pizza[]> {
-  const res = await fetch(`${API_URL}/api/pizzas`);
-  if (!res.ok) throw new Error("Impossible de charger les pizzas.");
-  return res.json();
-}
+export type AuthClient = { name: string; email: string; loyaltyPoints: number };
 
-export async function fetchTimeSlots(): Promise<TimeSlot[]> {
-  const res = await fetch(`${API_URL}/api/time-slots`);
-  if (!res.ok) throw new Error("Impossible de charger les créneaux.");
-  return res.json();
-}
+export const LOYALTY_REWARD_THRESHOLD = 10;
 
 function extractErrorMessage(data: unknown): string {
   if (typeof data === "object" && data !== null && "error" in data) {
@@ -70,39 +64,71 @@ function extractErrorMessage(data: unknown): string {
   return "Erreur lors de la commande.";
 }
 
-export async function createOrder(input: CreateOrderInput): Promise<Order> {
-  const res = await fetch(`${API_URL}/api/orders`, {
+async function api<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, { credentials: "include", ...options });
+  if (res.status === 204) return undefined as T;
+  const data = await res.json();
+  if (!res.ok) throw new Error(extractErrorMessage(data));
+  return data;
+}
+
+export function fetchPizzas(): Promise<Pizza[]> {
+  return api("/api/pizzas");
+}
+
+export function fetchTimeSlots(): Promise<TimeSlot[]> {
+  return api("/api/time-slots");
+}
+
+export function createOrder(input: CreateOrderInput): Promise<Order> {
+  return api("/api/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(extractErrorMessage(data));
-  return data;
 }
 
-export async function fetchOrder(orderId: string): Promise<Order> {
-  const res = await fetch(`${API_URL}/api/orders/${orderId}`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(extractErrorMessage(data));
-  return data;
+export function fetchOrder(orderId: string): Promise<Order> {
+  return api(`/api/orders/${orderId}`);
 }
 
-export async function fetchOrders(date?: string): Promise<Order[]> {
-  const url = new URL(`${API_URL}/api/orders`);
-  if (date) url.searchParams.set("date", date);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Impossible de charger les commandes.");
-  return res.json();
+export function fetchOrders(date?: string): Promise<Order[]> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  return api(`/api/orders${query}`);
 }
 
-export async function updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
-  const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
+export function fetchMyOrders(): Promise<Order[]> {
+  return api("/api/orders/mine");
+}
+
+export function updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
+  return api(`/api/orders/${orderId}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(extractErrorMessage(data));
-  return data;
+}
+
+export function register(input: { name: string; email: string; password: string }): Promise<AuthClient> {
+  return api("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function login(input: { email: string; password: string }): Promise<AuthClient> {
+  return api("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function logout(): Promise<void> {
+  return api("/api/auth/logout", { method: "POST" });
+}
+
+export function fetchMe(): Promise<AuthClient> {
+  return api("/api/auth/me");
 }
