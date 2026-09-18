@@ -1,8 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
+import { attachClientIfPresent, requireAuth } from "../lib/auth.js";
 import { prisma } from "../prisma.js";
 
 export const ordersRouter = Router();
+
+const LOYALTY_REWARD_THRESHOLD = 10;
 
 const ORDER_STATUSES = [
   "PENDING",
@@ -25,8 +28,8 @@ const ALLOWED_TRANSITIONS: Record<string, readonly string[]> = {
 };
 
 const createOrderSchema = z.object({
-  clientName: z.string().min(1),
-  clientEmail: z.string().email(),
+  clientName: z.string().min(1).optional(),
+  clientEmail: z.string().email().optional(),
   clientPhone: z.string().optional(),
   timeSlotId: z.string(),
   items: z
@@ -39,12 +42,18 @@ const createOrderSchema = z.object({
     .min(1),
 });
 
-ordersRouter.post("/", async (req, res) => {
+ordersRouter.post("/", attachClientIfPresent, async (req, res) => {
   const parsed = createOrderSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
   const { clientName, clientEmail, clientPhone, timeSlotId, items } = parsed.data;
+
+  // Logged-in clients earn/redeem points under their own identity, so a
+  // guest can't type someone else's email to farm their loyalty balance.
+  if (!req.clientId && (!clientName || !clientEmail)) {
+    return res.status(400).json({ error: "Nom et email sont requis." });
+  }
 
   try {
     const order = await prisma.$transaction(async (tx) => {
@@ -60,18 +69,52 @@ ordersRouter.post("/", async (req, res) => {
       });
       const pizzaById = new Map(pizzas.map((p) => [p.id, p]));
 
-      let totalCents = 0;
+      let subtotalCents = 0;
+      let pointsEarned = 0;
       for (const item of items) {
         const pizza = pizzaById.get(item.pizzaId);
         if (!pizza) throw new Error("PIZZA_NOT_FOUND");
-        totalCents += pizza.priceCents * item.quantity;
+        subtotalCents += pizza.priceCents * item.quantity;
+        pointsEarned += item.quantity;
       }
 
-      const client = await tx.client.upsert({
-        where: { email: clientEmail },
-        update: { name: clientName, phone: clientPhone },
-        create: { name: clientName, email: clientEmail, phone: clientPhone },
-      });
+      let client;
+      if (req.clientId) {
+        client = await tx.client.findUniqueOrThrow({ where: { id: req.clientId } });
+      } else {
+        const existing = await tx.client.findUnique({ where: { email: clientEmail! } });
+        // A password-protected account can only earn/spend its own loyalty
+        // points, or have its name/phone changed, by someone logged in as
+        // that account — not by anyone who happens to type its email.
+        if (existing?.passwordHash) {
+          throw new Error("ACCOUNT_LOGIN_REQUIRED");
+        }
+        client = existing
+          ? await tx.client.update({
+              where: { id: existing.id },
+              data: { name: clientName!, phone: clientPhone },
+            })
+          : await tx.client.create({
+              data: { name: clientName!, email: clientEmail!, phone: clientPhone },
+            });
+      }
+
+      // Reward: once the client has 10+ stamps, the cheapest single unit
+      // in this order is free, and 10 stamps are spent on it. The debit is
+      // conditional on the balance at write time (not the value read above),
+      // so two concurrent orders can't both redeem the same 10 points.
+      let discountCents = 0;
+      if (client.loyaltyPoints >= LOYALTY_REWARD_THRESHOLD) {
+        const redeemed = await tx.client.updateMany({
+          where: { id: client.id, loyaltyPoints: { gte: LOYALTY_REWARD_THRESHOLD } },
+          data: { loyaltyPoints: { decrement: LOYALTY_REWARD_THRESHOLD } },
+        });
+        if (redeemed.count > 0) {
+          const cheapestPizza = pizzas.reduce((min, p) => (p.priceCents < min.priceCents ? p : min));
+          discountCents = cheapestPizza.priceCents;
+        }
+      }
+      const totalCents = subtotalCents - discountCents;
 
       const updatedSlot = await tx.timeSlot.updateMany({
         where: { id: timeSlotId, reserved: { lt: slot.capacity } },
@@ -79,11 +122,18 @@ ordersRouter.post("/", async (req, res) => {
       });
       if (updatedSlot.count === 0) throw new Error("SLOT_FULL");
 
+      await tx.client.update({
+        where: { id: client.id },
+        data: { loyaltyPoints: { increment: pointsEarned } },
+      });
+
       return tx.order.create({
         data: {
           clientId: client.id,
           timeSlotId,
           totalCents,
+          discountCents,
+          pointsEarned,
           items: {
             create: items.map((item) => ({
               pizzaId: item.pizzaId,
@@ -104,9 +154,22 @@ ordersRouter.post("/", async (req, res) => {
     if (err instanceof Error && err.message === "PIZZA_NOT_FOUND") {
       return res.status(400).json({ error: "Une pizza demandée n'existe pas." });
     }
+    if (err instanceof Error && err.message === "ACCOUNT_LOGIN_REQUIRED") {
+      return res.status(403).json({ error: "Cet email est associé à un compte. Connecte-toi pour commander." });
+    }
     console.error(err);
     res.status(500).json({ error: "Erreur serveur." });
   }
+});
+
+// Account page: the logged-in client's own order history, newest first.
+ordersRouter.get("/mine", requireAuth, async (req, res) => {
+  const orders = await prisma.order.findMany({
+    where: { clientId: req.clientId! },
+    include: { items: { include: { pizza: true } }, timeSlot: true },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(orders);
 });
 
 ordersRouter.get("/:id", async (req, res) => {
@@ -145,7 +208,7 @@ ordersRouter.get("/", async (req, res) => {
   const orders = await prisma.order.findMany({
     where: { timeSlot: { startsAt: { gte: startOfDay, lt: endOfDay } } },
     include: {
-      client: true,
+      client: { select: { name: true, email: true, phone: true } },
       items: { include: { pizza: true } },
       timeSlot: true,
     },
@@ -175,20 +238,40 @@ ordersRouter.patch("/:id/status", async (req, res) => {
     });
   }
 
-  // Conditional on the status we just checked, so a concurrent request that
-  // already moved the order elsewhere loses the race instead of silently
-  // overwriting it (same pattern as the time-slot booking transaction above).
-  const result = await prisma.order.updateMany({
-    where: { id: req.params.id, status: order.status },
-    data: { status: parsed.data.status },
-  });
-  if (result.count === 0) {
-    return res.status(409).json({ error: "La commande a été modifiée entre-temps." });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Conditional on the status we just checked, so a concurrent request
+      // that already moved the order elsewhere loses the race instead of
+      // silently overwriting it (same pattern as the booking transaction).
+      const result = await tx.order.updateMany({
+        where: { id: req.params.id, status: order.status },
+        data: { status: parsed.data.status },
+      });
+      if (result.count === 0) throw new Error("STALE_STATUS");
+
+      // Cancelling claws back the stamps this order earned, so
+      // cancel-then-reorder can't be used to farm loyalty points.
+      // (Redeemed stamps are not refunded, same as a physical card.)
+      if (parsed.data.status === "CANCELLED" && order.pointsEarned > 0) {
+        const client = await tx.client.findUniqueOrThrow({ where: { id: order.clientId } });
+        const newBalance = Math.max(0, client.loyaltyPoints - order.pointsEarned);
+        await tx.client.update({ where: { id: client.id }, data: { loyaltyPoints: newBalance } });
+      }
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === "STALE_STATUS") {
+      return res.status(409).json({ error: "La commande a été modifiée entre-temps." });
+    }
+    throw err;
   }
 
   const updated = await prisma.order.findUniqueOrThrow({
     where: { id: req.params.id },
-    include: { items: { include: { pizza: true } }, timeSlot: true, client: true },
+    include: {
+      items: { include: { pizza: true } },
+      timeSlot: true,
+      client: { select: { name: true, email: true, phone: true } },
+    },
   });
 
   res.json(updated);

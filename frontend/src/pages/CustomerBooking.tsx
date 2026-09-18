@@ -7,9 +7,11 @@ import {
   createOrder,
   fetchPizzas,
   fetchTimeSlots,
+  LOYALTY_REWARD_THRESHOLD,
   type Pizza,
   type TimeSlot,
 } from "@/api";
+import { useAuth } from "@/context/AuthContext";
 import { CartFooter } from "@/components/CartFooter";
 import { PizzaCard } from "@/components/PizzaCard";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
@@ -30,6 +32,7 @@ function SectionTitle({ step, title }: { step: number; title: string }) {
 
 export default function CustomerBooking() {
   const navigate = useNavigate();
+  const { client, refresh } = useAuth();
   const [pizzas, setPizzas] = useState<Pizza[]>([]);
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -85,7 +88,7 @@ export default function CustomerBooking() {
       toast.error("Choisis un créneau horaire.");
       return;
     }
-    if (!name || !email) {
+    if (!client && (!name || !email)) {
       toast.error("Renseigne ton nom et ton email.");
       return;
     }
@@ -93,13 +96,14 @@ export default function CustomerBooking() {
     setSubmitting(true);
     try {
       const order = await createOrder({
-        clientName: name,
-        clientEmail: email,
+        clientName: client ? undefined : name,
+        clientEmail: client ? undefined : email,
         clientPhone: phone || undefined,
         timeSlotId: selectedSlotId,
         items,
       });
       toast.success("Commande confirmée !");
+      if (client) refresh();
       navigate(`/suivi/${order.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur inconnue.");
@@ -135,12 +139,20 @@ export default function CustomerBooking() {
               </p>
             </div>
           </div>
-          <Link
-            to="/pizzaiolo"
-            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-          >
-            Espace pizzaiolo
-          </Link>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {client ? (
+              <Link to="/compte" className="underline-offset-4 hover:underline">
+                {client.name}
+              </Link>
+            ) : (
+              <Link to="/connexion" className="underline-offset-4 hover:underline">
+                Connexion
+              </Link>
+            )}
+            <Link to="/pizzaiolo" className="underline-offset-4 hover:underline">
+              Espace pizzaiolo
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -175,27 +187,36 @@ export default function CustomerBooking() {
         <section>
           <SectionTitle step={3} title="Tes coordonnées" />
           <div className="grid max-w-sm gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="name">Nom</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Jean Dupont"
-                required
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="toi@exemple.com"
-                required
-              />
-            </div>
+            {client ? (
+              <p className="text-sm text-muted-foreground">
+                Connecté en tant que <span className="font-medium text-foreground">{client.name}</span> (
+                {client.email})
+              </p>
+            ) : (
+              <>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="name">Nom</Label>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Jean Dupont"
+                    required
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="toi@exemple.com"
+                    required
+                  />
+                </div>
+              </>
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="phone">Téléphone (optionnel)</Label>
               <Input
@@ -206,6 +227,11 @@ export default function CustomerBooking() {
                 placeholder="06 12 34 56 78"
               />
             </div>
+            {client && client.loyaltyPoints >= LOYALTY_REWARD_THRESHOLD && (
+              <p className="rounded-lg bg-accent/10 px-3 py-2 text-sm text-accent">
+                🎉 Ta pizza la moins chère sera offerte sur cette commande
+              </p>
+            )}
           </div>
         </section>
       </main>

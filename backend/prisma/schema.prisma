@@ -24,11 +24,13 @@ enum PaymentStatus {
 }
 
 model Client {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  phone     String?
-  createdAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  phone         String?
+  passwordHash  String?
+  loyaltyPoints Int      @default(0)
+  createdAt     DateTime @default(now())
 
   orders Order[]
 }
@@ -64,10 +66,12 @@ model Order {
   clientId    String
   timeSlot    TimeSlot    @relation(fields: [timeSlotId], references: [id])
   timeSlotId  String
-  status      OrderStatus @default(PENDING)
-  totalCents  Int
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  status        OrderStatus @default(PENDING)
+  totalCents    Int
+  discountCents Int         @default(0)
+  pointsEarned  Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   items   OrderItem[]
   payment Payment?
