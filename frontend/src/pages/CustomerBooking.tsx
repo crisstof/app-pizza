@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Pizza as PizzaIcon } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   createOrder,
@@ -29,6 +29,7 @@ function SectionTitle({ step, title }: { step: number; title: string }) {
 }
 
 export default function CustomerBooking() {
+  const navigate = useNavigate();
   const [pizzas, setPizzas] = useState<Pizza[]>([]);
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -98,13 +99,8 @@ export default function CustomerBooking() {
         timeSlotId: selectedSlotId,
         items,
       });
-      toast.success(
-        `Commande confirmée · Réf ${order.id.slice(0, 8)} · ${(order.totalCents / 100).toFixed(2)} €`
-      );
-      setQuantities({});
-      setSelectedSlotId("");
-      const refreshed = await fetchTimeSlots();
-      setSlots(refreshed);
+      toast.success("Commande confirmée !");
+      navigate(`/suivi/${order.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur inconnue.");
     } finally {
