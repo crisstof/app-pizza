@@ -4,6 +4,26 @@ import { prisma } from "../prisma.js";
 
 export const ordersRouter = Router();
 
+const ORDER_STATUSES = [
+  "PENDING",
+  "CONFIRMED",
+  "PREPARING",
+  "READY",
+  "PICKED_UP",
+  "CANCELLED",
+] as const;
+
+// What each status is allowed to move to. Anything not listed here
+// (e.g. PICKED_UP -> anything) is a dead end.
+const ALLOWED_TRANSITIONS: Record<string, readonly string[]> = {
+  PENDING: ["CONFIRMED", "CANCELLED"],
+  CONFIRMED: ["PREPARING", "CANCELLED"],
+  PREPARING: ["READY", "CANCELLED"],
+  READY: ["PICKED_UP"],
+  PICKED_UP: [],
+  CANCELLED: [],
+};
+
 const createOrderSchema = z.object({
   clientName: z.string().min(1),
   clientEmail: z.string().email(),
@@ -96,4 +116,80 @@ ordersRouter.get("/:id", async (req, res) => {
   });
   if (!order) return res.status(404).json({ error: "Commande introuvable." });
   res.json(order);
+});
+
+// Pizzaiolo dashboard: every order for today (or a given date), oldest slot first.
+ordersRouter.get("/", async (req, res) => {
+  const dateParam = typeof req.query.date === "string" ? req.query.date : undefined;
+  let startOfDay: Date;
+  if (dateParam) {
+    // Parse "YYYY-MM-DD" as local midnight directly, instead of letting
+    // `new Date(dateParam)` treat it as UTC midnight (which shifts the day
+    // on negative-UTC-offset servers once setHours() re-localizes it).
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateParam);
+    if (!match) {
+      return res.status(400).json({ error: "Paramètre 'date' invalide (attendu AAAA-MM-JJ)." });
+    }
+    const [, year, month, dayOfMonth] = match;
+    startOfDay = new Date(Number(year), Number(month) - 1, Number(dayOfMonth));
+    if (Number.isNaN(startOfDay.getTime())) {
+      return res.status(400).json({ error: "Paramètre 'date' invalide." });
+    }
+  } else {
+    startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+  }
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+
+  const orders = await prisma.order.findMany({
+    where: { timeSlot: { startsAt: { gte: startOfDay, lt: endOfDay } } },
+    include: {
+      client: true,
+      items: { include: { pizza: true } },
+      timeSlot: true,
+    },
+    orderBy: { timeSlot: { startsAt: "asc" } },
+  });
+
+  res.json(orders);
+});
+
+const updateStatusSchema = z.object({
+  status: z.enum(ORDER_STATUSES),
+});
+
+ordersRouter.patch("/:id/status", async (req, res) => {
+  const parsed = updateStatusSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+
+  const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+  if (!order) return res.status(404).json({ error: "Commande introuvable." });
+
+  const allowed = ALLOWED_TRANSITIONS[order.status] ?? [];
+  if (!allowed.includes(parsed.data.status)) {
+    return res.status(409).json({
+      error: `Impossible de passer de ${order.status} à ${parsed.data.status}.`,
+    });
+  }
+
+  // Conditional on the status we just checked, so a concurrent request that
+  // already moved the order elsewhere loses the race instead of silently
+  // overwriting it (same pattern as the time-slot booking transaction above).
+  const result = await prisma.order.updateMany({
+    where: { id: req.params.id, status: order.status },
+    data: { status: parsed.data.status },
+  });
+  if (result.count === 0) {
+    return res.status(409).json({ error: "La commande a été modifiée entre-temps." });
+  }
+
+  const updated = await prisma.order.findUniqueOrThrow({
+    where: { id: req.params.id },
+    include: { items: { include: { pizza: true } }, timeSlot: true, client: true },
+  });
+
+  res.json(updated);
 });

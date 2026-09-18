@@ -27,6 +27,24 @@ export type CreateOrderInput = {
   items: OrderItemInput[];
 };
 
+export type OrderStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "PREPARING"
+  | "READY"
+  | "PICKED_UP"
+  | "CANCELLED";
+
+export type Order = {
+  id: string;
+  status: OrderStatus;
+  totalCents: number;
+  createdAt: string;
+  client: { name: string; email: string; phone: string | null };
+  timeSlot: TimeSlot;
+  items: { id: string; quantity: number; pizza: Pizza }[];
+};
+
 export async function fetchPizzas(): Promise<Pizza[]> {
   const res = await fetch(`${API_URL}/api/pizzas`);
   if (!res.ok) throw new Error("Impossible de charger les pizzas.");
@@ -57,6 +75,25 @@ export async function createOrder(input: CreateOrderInput) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(extractErrorMessage(data));
+  return data;
+}
+
+export async function fetchOrders(date?: string): Promise<Order[]> {
+  const url = new URL(`${API_URL}/api/orders`);
+  if (date) url.searchParams.set("date", date);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Impossible de charger les commandes.");
+  return res.json();
+}
+
+export async function updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
+  const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(extractErrorMessage(data));
