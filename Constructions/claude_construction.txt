@@ -1,0 +1,33 @@
+Frontend : l'interface (ex. React, Vue, ou simple HTML/JS selon la complexité voulue)
+Backend : le serveur qui gère la logique (ex. Node.js/Express, Python/FastAPI...)
+Base de données réelle : ça veut dire un vrai serveur de BDD qui persiste les données — par exemple PostgreSQL ou SQLite en local pour commencer, ou un service hébergé (Supabase, Neon, etc.) si tu veux quelque chose accessible en ligne.
+
+
+
+1. Le point important : il me faut un vrai dossier de projet
+On est actuellement dans un espace temporaire ("scratch") qui disparaît à la fin de la session. Pour un vrai projet que tu veux garder, il faut soit :
+
+que tu me dises un dossier existant sur ton PC, soit
+que je t'aide à en créer un nouveau (ex. C:\Users\admin\Projects\mon-appli)
+
+Pour démarrer, j'ai besoin de savoir :
+
+Demande en cours
+Demande en cours
+Type d'appli
+Quel type d'appli veux-tu créer ?
+Où veux-tu que je crée ce projet ?
+
+
+
+
+
+
+
+
+
+
+
+
+
+

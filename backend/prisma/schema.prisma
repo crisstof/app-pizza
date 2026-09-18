@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  PICKED_UP
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  createdAt DateTime @default(now())
+
+  orders Order[]
+}
+
+model Pizza {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  priceCents  Int
+  imageUrl    String?
+  available   Boolean @default(true)
+
+  orderItems OrderItem[]
+}
+
+// A bookable slot at the pizzeria. capacity/reserved lets the shop
+// cap how many orders can be prepared in the same window.
+model TimeSlot {
+  id        String   @id @default(cuid())
+  startsAt  DateTime
+  endsAt    DateTime
+  capacity  Int
+  reserved  Int      @default(0)
+
+  orders Order[]
+
+  @@index([startsAt])
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  client      Client      @relation(fields: [clientId], references: [id])
+  clientId    String
+  timeSlot    TimeSlot    @relation(fields: [timeSlotId], references: [id])
+  timeSlotId  String
+  status      OrderStatus @default(PENDING)
+  totalCents  Int
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  items   OrderItem[]
+  payment Payment?
+}
+
+model OrderItem {
+  id            String @id @default(cuid())
+  order         Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId       String
+  pizza         Pizza  @relation(fields: [pizzaId], references: [id])
+  pizzaId       String
+  quantity      Int
+  unitPriceCents Int
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  order           Order         @relation(fields: [orderId], references: [id])
+  orderId         String        @unique
+  stripePaymentId String?
+  amountCents     Int
+  status          PaymentStatus @default(PENDING)
+  createdAt       DateTime      @default(now())
+}
