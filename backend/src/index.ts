@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { authRouter } from "./routes/auth.js";
-import { errorHandler } from "./lib/asyncRoute.js";
+import { errorHandler } from "./lib/errors.js";
 import { requireStaff, staffPasswordConfigured } from "./lib/staffAuth.js";
 import { refreshUpcomingTimeSlots } from "./lib/timeSlots.js";
 import { UPLOADS_DIR } from "./lib/uploads.js";
@@ -18,6 +18,9 @@ import { timeSlotsRouter } from "./routes/timeSlots.js";
 import { ordersRouter } from "./routes/orders.js";
 
 const app = express();
+// Behind a reverse proxy, trust its X-Forwarded-For so req.ip (used by the
+// login lockouts) is the visitor's address, not the proxy's.
+if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY));
 app.use(cors({ origin: process.env.FRONTEND_URL ?? "http://localhost:5173", credentials: true }));
 app.use(cookieParser());
 app.use(express.json());

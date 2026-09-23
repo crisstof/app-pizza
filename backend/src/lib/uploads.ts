@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import multer from "multer";
-import { HttpError } from "./asyncRoute.js";
+import { HttpError } from "./errors.js";
 
 // Uploaded files live in backend/uploads (gitignored) and are served at /uploads.
 export const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");

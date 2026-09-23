@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
-import { Router, type RequestHandler } from "express";
+import { Router, type Request, type RequestHandler } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { asyncRoute, HttpError } from "../../lib/asyncRoute.js";
+import { HttpError } from "../../lib/errors.js";
 import { pizzaPhotoUpload, pizzaPhotoUrl, removeUploadedPhoto } from "../../lib/uploads.js";
 import { prisma } from "../../prisma.js";
 
@@ -39,19 +39,19 @@ function isNotFoundError(err: unknown) {
 // Whole menu for staff, including "Épuisée" pizzas; archived ones are gone.
 adminPizzasRouter.get(
   "/",
-  asyncRoute(async (_req, res) => {
+  async (_req, res) => {
     const pizzas = await prisma.pizza.findMany({
       where: { archivedAt: null },
       include: { _count: { select: { orderItems: true } } },
       orderBy: [{ category: "asc" }, { name: "asc" }],
     });
     res.json(pizzas);
-  })
+  }
 );
 
 adminPizzasRouter.post(
   "/",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const parsed = pizzaSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     try {
@@ -62,12 +62,12 @@ adminPizzasRouter.post(
       if (isUniqueNameError(err)) throw new HttpError(409, "Une pizza porte déjà ce nom.");
       throw err;
     }
-  })
+  }
 );
 
 adminPizzasRouter.patch(
   "/:id",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const parsed = pizzaSchema.partial().safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     try {
@@ -82,14 +82,14 @@ adminPizzasRouter.patch(
       if (isNotFoundError(err)) throw new HttpError(404, "Pizza introuvable.");
       throw err;
     }
-  })
+  }
 );
 
 // A pizza that was never ordered is deleted for good; otherwise it's archived
 // so past orders keep showing what was bought.
 adminPizzasRouter.delete(
   "/:id",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const pizza = await prisma.pizza.findUnique({
       where: { id: req.params.id },
       include: { _count: { select: { orderItems: true } } },
@@ -111,7 +111,7 @@ adminPizzasRouter.delete(
       data: { archivedAt: new Date(), available: false },
     });
     res.json({ deleted: false, archived: true });
-  })
+  }
 );
 
 // Runs multer and turns its errors (file too large…) into readable 400s.
@@ -128,7 +128,7 @@ const receivePhoto: RequestHandler = (req, res, next) =>
 adminPizzasRouter.post(
   "/:id/photo",
   receivePhoto,
-  asyncRoute(async (req, res) => {
+  async (req: Request<{ id: string }>, res) => {
     if (!req.file) throw new HttpError(400, "Aucune photo reçue.");
     const pizza = await prisma.pizza.findUnique({ where: { id: req.params.id } });
     if (!pizza || pizza.archivedAt) {
@@ -141,5 +141,5 @@ adminPizzasRouter.post(
     });
     await removeUploadedPhoto(pizza.imageUrl);
     res.json(updated);
-  })
+  }
 );
