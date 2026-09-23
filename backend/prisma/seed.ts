@@ -32,9 +32,11 @@ const MENU: MenuItem[] = [
 ];
 
 async function main() {
+  // Starter menu only: creates missing pizzas but never overwrites one, since
+  // the staff back-office (/pizzaiolo/carte) is where the menu is edited.
   for (const { image, ...pizza } of MENU) {
     const data = { ...pizza, imageUrl: `/images/${image}.jpg` };
-    await prisma.pizza.upsert({ where: { name: pizza.name }, update: data, create: data });
+    await prisma.pizza.upsert({ where: { name: pizza.name }, update: {}, create: data });
   }
 
   await ensureUpcomingTimeSlots();

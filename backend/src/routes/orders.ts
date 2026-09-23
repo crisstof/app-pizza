@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { attachClientIfPresent, requireAuth } from "../lib/auth.js";
+import { requireStaff } from "../lib/staffAuth.js";
 import { prisma } from "../prisma.js";
 
 export const ordersRouter = Router();
@@ -42,11 +43,17 @@ const ETA_EDITABLE_STATUSES = ["PENDING", "CONFIRMED", "PREPARING"] as const;
 const MAX_ETA_MINUTES = 120;
 
 // Dashboard-shaped order: never `client: true`, which would leak passwordHash.
-const DASHBOARD_ORDER_INCLUDE = {
+export const DASHBOARD_ORDER_INCLUDE = {
   items: { include: { pizza: true } },
   timeSlot: true,
   client: { select: { name: true, email: true, phone: true } },
 } as const;
+
+class UnavailablePizzaError extends Error {
+  constructor(public pizzaName: string) {
+    super("PIZZA_UNAVAILABLE");
+  }
+}
 
 const createOrderSchema = z.object({
   clientName: z.string().min(1).optional(),
@@ -81,6 +88,7 @@ ordersRouter.post("/", attachClientIfPresent, async (req, res) => {
       // Lock the slot's row implicitly via the conditional update below,
       // so two concurrent bookings can't both squeeze into the last spot.
       const slot = await tx.timeSlot.findUniqueOrThrow({ where: { id: timeSlotId } });
+      if (slot.closed) throw new Error("SLOT_CLOSED");
       if (slot.reserved >= slot.capacity) {
         throw new Error("SLOT_FULL");
       }
@@ -94,7 +102,8 @@ ordersRouter.post("/", attachClientIfPresent, async (req, res) => {
       let pointsEarned = 0;
       for (const item of items) {
         const pizza = pizzaById.get(item.pizzaId);
-        if (!pizza) throw new Error("PIZZA_NOT_FOUND");
+        if (!pizza || pizza.archivedAt) throw new Error("PIZZA_NOT_FOUND");
+        if (!pizza.available) throw new UnavailablePizzaError(pizza.name);
         subtotalCents += pizza.priceCents * item.quantity;
         pointsEarned += item.quantity;
       }
@@ -138,7 +147,7 @@ ordersRouter.post("/", attachClientIfPresent, async (req, res) => {
       const totalCents = subtotalCents - discountCents;
 
       const updatedSlot = await tx.timeSlot.updateMany({
-        where: { id: timeSlotId, reserved: { lt: slot.capacity } },
+        where: { id: timeSlotId, closed: false, reserved: { lt: slot.capacity } },
         data: { reserved: { increment: 1 } },
       });
       if (updatedSlot.count === 0) throw new Error("SLOT_FULL");
@@ -171,6 +180,12 @@ ordersRouter.post("/", attachClientIfPresent, async (req, res) => {
   } catch (err) {
     if (err instanceof Error && err.message === "SLOT_FULL") {
       return res.status(409).json({ error: "Ce créneau est complet." });
+    }
+    if (err instanceof Error && err.message === "SLOT_CLOSED") {
+      return res.status(409).json({ error: "Ce créneau n'est plus disponible." });
+    }
+    if (err instanceof UnavailablePizzaError) {
+      return res.status(400).json({ error: `${err.pizzaName} n'est plus disponible aujourd'hui.` });
     }
     if (err instanceof Error && err.message === "PIZZA_NOT_FOUND") {
       return res.status(400).json({ error: "Une pizza demandée n'existe pas." });
@@ -210,7 +225,7 @@ ordersRouter.get("/:id", async (req, res) => {
 });
 
 // Pizzaiolo dashboard: every order for today (or a given date), oldest slot first.
-ordersRouter.get("/", async (req, res) => {
+ordersRouter.get("/", requireStaff, async (req, res) => {
   const dateParam = typeof req.query.date === "string" ? req.query.date : undefined;
   let startOfDay: Date;
   if (dateParam) {
@@ -246,7 +261,7 @@ const updateStatusSchema = z.object({
   status: z.enum(ORDER_STATUSES),
 });
 
-ordersRouter.patch("/:id/status", async (req, res) => {
+ordersRouter.patch("/:id/status", requireStaff, async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
@@ -280,7 +295,15 @@ ordersRouter.patch("/:id/status", async (req, res) => {
       // Cancelling claws back the stamps this order earned, so
       // cancel-then-reorder can't be used to farm loyalty points.
       // (Redeemed stamps are not refunded, same as a physical card.)
-      if (parsed.data.status === "CANCELLED" && order.pointsEarned > 0) {
+      // Cancelling also gives the order's place in its slot back.
+      if (nextStatus === "CANCELLED") {
+        await tx.timeSlot.updateMany({
+          where: { id: order.timeSlotId, reserved: { gt: 0 } },
+          data: { reserved: { decrement: 1 } },
+        });
+      }
+
+      if (nextStatus === "CANCELLED" && order.pointsEarned > 0) {
         const client = await tx.client.findUniqueOrThrow({ where: { id: order.clientId } });
         const newBalance = Math.max(0, client.loyaltyPoints - order.pointsEarned);
         await tx.client.update({ where: { id: client.id }, data: { loyaltyPoints: newBalance } });
@@ -306,7 +329,7 @@ const updateEtaSchema = z.object({
 });
 
 // Pizzaiolo sets "ready in N minutes" from now; the tracking page counts down.
-ordersRouter.patch("/:id/eta", async (req, res) => {
+ordersRouter.patch("/:id/eta", requireStaff, async (req, res) => {
   const parsed = updateEtaSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });

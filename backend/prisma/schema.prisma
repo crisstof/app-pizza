@@ -45,9 +45,33 @@ model Pizza {
   imageUrl    String?
   category    String   @default("TOMATO")
   tags        String[] @default([])
+  // false = "Épuisée": still shown greyed on the menu, can't be ordered.
   available   Boolean  @default(true)
+  // Set instead of deleting a pizza that past orders still reference.
+  archivedAt  DateTime?
 
   orderItems OrderItem[]
+}
+
+// Singleton row (id = 1) holding the shop's service hours, edited from the
+// staff back-office. Times are minutes since local midnight, on 30-min steps.
+model ShopSettings {
+  id             Int     @id @default(1)
+  lunchOpen      Boolean @default(true)
+  lunchStart     Int     @default(660)  // 11:00
+  lunchEnd       Int     @default(840)  // 14:00
+  dinnerOpen     Boolean @default(true)
+  dinnerStart    Int     @default(1080) // 18:00
+  dinnerEnd      Int     @default(1320) // 22:00
+  slotCapacity   Int     @default(5)
+  daysAhead      Int     @default(7)
+  closedWeekdays Int[]   @default([])   // 0 = Sunday … 6 = Saturday
+}
+
+// Exceptional closure (holiday…), as a local "YYYY-MM-DD" date.
+model ClosedDay {
+  date   String  @id
+  reason String?
 }
 
 // A bookable slot at the pizzeria. capacity/reserved lets the shop
@@ -58,6 +82,9 @@ model TimeSlot {
   endsAt    DateTime
   capacity  Int
   reserved  Int      @default(0)
+  // Closed by staff (rush, holiday, hours changed): hidden from customers,
+  // existing orders stay valid.
+  closed    Boolean  @default(false)
 
   orders Order[]
 

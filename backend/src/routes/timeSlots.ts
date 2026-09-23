@@ -4,13 +4,14 @@ import { prisma } from "../prisma.js";
 
 export const timeSlotsRouter = Router();
 
-// Only slots that still have room and haven't started yet.
+// Upcoming slots customers can book: not started yet, not closed by staff.
 timeSlotsRouter.get("/", async (_req, res) => {
   await refreshUpcomingTimeSlots();
 
   const slots = await prisma.timeSlot.findMany({
     where: {
       startsAt: { gte: new Date() },
+      closed: false,
     },
     orderBy: { startsAt: "asc" },
   });

@@ -1,61 +1,89 @@
 import { prisma } from "../prisma.js";
+import { getSettings, localDateKey, serviceWindows, SLOT_DURATION_MINUTES } from "./settings.js";
 
-const SLOT_DURATION_MINUTES = 30;
-const SLOT_CAPACITY = 5;
-const DAYS_AHEAD = 7;
+type SlotData = { startsAt: Date; endsAt: Date; capacity: number };
 
-// Lunch and dinner service windows, every day of the week. [startHour, endHour)
-// in 24h local time; the last slot of a window starts at `endHour` minus one
-// slot duration, e.g. a window ending at 14 with 30-minute slots last starts
-// a booking at 13:30.
-const SERVICE_WINDOWS: { startHour: number; endHour: number }[] = [
-  { startHour: 11, endHour: 14 },
-  { startHour: 18, endHour: 22 },
-];
+/**
+ * The slots that should exist from now on, according to ShopSettings: every
+ * open service window, cut into SLOT_DURATION_MINUTES slots, for the next
+ * `daysAhead` days, minus closed weekdays and exceptional ClosedDays.
+ */
+async function expectedUpcomingSlots(now: Date): Promise<SlotData[]> {
+  const [settings, closedDays] = await Promise.all([getSettings(), prisma.closedDay.findMany()]);
+  const closedDates = new Set(closedDays.map((d) => d.date));
+  const windows = serviceWindows(settings);
 
-function slotsForDay(day: Date): { startsAt: Date; endsAt: Date; capacity: number }[] {
-  const slots: { startsAt: Date; endsAt: Date; capacity: number }[] = [];
-  for (const window of SERVICE_WINDOWS) {
-    const windowStart = new Date(day);
-    windowStart.setHours(window.startHour, 0, 0, 0);
-    const windowEnd = new Date(day);
-    windowEnd.setHours(window.endHour, 0, 0, 0);
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
 
-    for (
-      let startsAt = windowStart;
-      startsAt < windowEnd;
-      startsAt = new Date(startsAt.getTime() + SLOT_DURATION_MINUTES * 60 * 1000)
-    ) {
-      const endsAt = new Date(startsAt.getTime() + SLOT_DURATION_MINUTES * 60 * 1000);
-      slots.push({ startsAt, endsAt, capacity: SLOT_CAPACITY });
+  const slots: SlotData[] = [];
+  for (let i = 0; i < settings.daysAhead; i++) {
+    const day = new Date(today);
+    day.setDate(day.getDate() + i);
+    if (settings.closedWeekdays.includes(day.getDay()) || closedDates.has(localDateKey(day))) continue;
+
+    for (const window of windows) {
+      // The last slot of a window starts one slot before its end (14:00 end → 13:30).
+      for (let m = window.start; m + SLOT_DURATION_MINUTES <= window.end; m += SLOT_DURATION_MINUTES) {
+        const startsAt = new Date(day);
+        startsAt.setHours(Math.floor(m / 60), m % 60, 0, 0);
+        if (startsAt < now) continue;
+        const endsAt = new Date(startsAt.getTime() + SLOT_DURATION_MINUTES * 60 * 1000);
+        slots.push({ startsAt, endsAt, capacity: settings.slotCapacity });
+      }
     }
   }
   return slots;
 }
 
 /**
- * Makes sure bookable time slots exist for the next `daysAhead` days.
- * Safe to call repeatedly (e.g. on every server start, or lazily from a
- * request handler): relies on TimeSlot.startsAt's unique constraint and
- * `skipDuplicates` rather than checking first, so concurrent calls can't
- * race into duplicate-key errors.
+ * Makes sure every expected upcoming slot exists. Safe to call repeatedly or
+ * concurrently: relies on TimeSlot.startsAt's unique constraint and
+ * `skipDuplicates` rather than checking first.
  */
-export async function ensureUpcomingTimeSlots(daysAhead = DAYS_AHEAD): Promise<void> {
+export async function ensureUpcomingTimeSlots(): Promise<void> {
+  const slots = await expectedUpcomingSlots(new Date());
+  if (slots.length === 0) return;
+  await prisma.timeSlot.createMany({ data: slots, skipDuplicates: true });
+}
+
+/**
+ * Brings existing future slots in line with the settings after staff changed
+ * hours, closed days, or capacity:
+ * - future slots that are no longer expected are deleted when nothing
+ *   references them, or closed (hidden from customers) when orders exist;
+ * - missing expected slots are created;
+ * - `newCapacity`, when given, is applied to every future slot but never
+ *   below what's already reserved.
+ * Called from staff request handlers (wrapped in asyncRoute), so it may throw.
+ */
+export async function syncUpcomingTimeSlots(newCapacity?: number): Promise<void> {
   const now = new Date();
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
+  const expected = await expectedUpcomingSlots(now);
+  const expectedTimes = new Set(expected.map((s) => s.startsAt.getTime()));
 
-  const candidates = Array.from({ length: daysAhead })
-    .flatMap((_, i) => {
-      const day = new Date(today);
-      day.setDate(day.getDate() + i);
-      return slotsForDay(day);
-    })
-    .filter((slot) => slot.startsAt >= now);
+  const future = await prisma.timeSlot.findMany({
+    where: { startsAt: { gte: now } },
+    select: { id: true, startsAt: true },
+  });
+  const staleIds = future.filter((s) => !expectedTimes.has(s.startsAt.getTime())).map((s) => s.id);
 
-  if (candidates.length === 0) return;
+  if (staleIds.length > 0) {
+    // `orders: none` is evaluated in the same statement as the delete, so a
+    // booking landing meanwhile keeps its slot (it gets closed just below).
+    await prisma.timeSlot.deleteMany({ where: { id: { in: staleIds }, orders: { none: {} } } });
+    await prisma.timeSlot.updateMany({ where: { id: { in: staleIds } }, data: { closed: true } });
+  }
 
-  await prisma.timeSlot.createMany({ data: candidates, skipDuplicates: true });
+  if (expected.length > 0) {
+    await prisma.timeSlot.createMany({ data: expected, skipDuplicates: true });
+  }
+
+  if (newCapacity !== undefined) {
+    await prisma.$executeRaw`UPDATE "TimeSlot" SET capacity = GREATEST(${newCapacity}, reserved) WHERE "startsAt" >= ${now}`;
+  }
+
+  lastRefresh = Date.now();
 }
 
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -70,11 +98,11 @@ let lastRefresh = 0;
  * The single shared timestamp means the startup call and the lazy
  * request-time check don't duplicate each other's work.
  */
-export async function refreshUpcomingTimeSlots(daysAhead = DAYS_AHEAD): Promise<void> {
+export async function refreshUpcomingTimeSlots(): Promise<void> {
   if (Date.now() - lastRefresh < REFRESH_INTERVAL_MS) return;
   lastRefresh = Date.now();
   try {
-    await ensureUpcomingTimeSlots(daysAhead);
+    await ensureUpcomingTimeSlots();
   } catch (err) {
     console.error("Échec de la génération des créneaux :", err);
   }
