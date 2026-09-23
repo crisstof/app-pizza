@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { authRouter } from "./routes/auth.js";
+import { refreshUpcomingTimeSlots } from "./lib/timeSlots.js";
 import { pizzasRouter } from "./routes/pizzas.js";
 import { timeSlotsRouter } from "./routes/timeSlots.js";
 import { ordersRouter } from "./routes/orders.js";
@@ -22,4 +23,5 @@ app.use("/api/orders", ordersRouter);
 const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 app.listen(port, () => {
   console.log(`Backend démarré sur http://localhost:${port}`);
+  refreshUpcomingTimeSlots();
 });

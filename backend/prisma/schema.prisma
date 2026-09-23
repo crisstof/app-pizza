@@ -57,7 +57,7 @@ model TimeSlot {
 
   orders Order[]
 
-  @@index([startsAt])
+  @@unique([startsAt])
 }
 
 model Order {
