@@ -96,7 +96,11 @@ export function TimeSlotPicker({
 
   return (
     <div>
-      <div className="-mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="Jour de retrait">
+      <div
+        className="-mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden"
+        role="group"
+        aria-label="Jour de retrait"
+      >
         {days.map((day) => {
           const active = day.key === activeDay.key;
           const hasRoom = day.slots.some((s) => s.available > 0);

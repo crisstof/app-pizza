@@ -6,8 +6,13 @@ export type Pizza = {
   description: string | null;
   priceCents: number;
   imageUrl: string | null;
+  category: PizzaCategory;
+  tags: PizzaTag[];
   available: boolean;
 };
+
+export type PizzaCategory = "TOMATO" | "CREAM" | "SPECIAL";
+export type PizzaTag = "vegetarian" | "spicy" | "popular" | "new";
 
 export type TimeSlot = {
   id: string;

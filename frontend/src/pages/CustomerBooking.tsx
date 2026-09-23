@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowDown, Flame, Gift, Pizza as PizzaIcon, User } from "lucide-react";
+import { ArrowDown, CalendarClock, Clock, Flame, Gift, Pizza as PizzaIcon, ShoppingBag, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -23,6 +23,70 @@ import { previewReward } from "@/lib/loyalty";
 
 const HERO_IMAGE = "/images/hero.jpg";
 
+const MENU_FILTERS: { key: string; label: string; match: (p: Pizza) => boolean }[] = [
+  { key: "all", label: "Toutes", match: () => true },
+  { key: "tomato", label: "Base tomate", match: (p) => p.category === "TOMATO" },
+  { key: "cream", label: "Base crème", match: (p) => p.category === "CREAM" },
+  { key: "special", label: "Spécialités", match: (p) => p.category === "SPECIAL" },
+  { key: "vegetarian", label: "Végétariennes", match: (p) => p.tags.includes("vegetarian") },
+];
+
+const STEPS = [
+  { icon: PizzaIcon, title: "Choisis tes pizzas", text: "Classiques, base crème ou spécialités." },
+  { icon: CalendarClock, title: "Réserve ton créneau", text: "Midi ou soir, jusqu'à 7 jours à l'avance." },
+  { icon: ShoppingBag, title: "Récupère-la bien chaude", text: "Elle sort du four à l'heure que tu as choisie." },
+];
+
+function HowItWorks() {
+  return (
+    <section aria-label="Comment ça marche" className="relative z-10 mx-auto -mt-12 max-w-6xl px-4">
+      <ol className="grid gap-4 rounded-2xl border border-border bg-card p-6 shadow-lg sm:grid-cols-3">
+        {STEPS.map(({ icon: Icon, title, text }, i) => (
+          <li key={title} className="flex items-start gap-4">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Icon className="size-5" aria-hidden />
+            </span>
+            <div>
+              <p className="font-display text-lg leading-tight">
+                <span className="text-primary">{i + 1}.</span> {title}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{text}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="mt-16 bg-hero text-hero-foreground">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
+        <div>
+          <p className="font-display flex items-center gap-2 text-2xl">
+            <PizzaIcon className="size-6" aria-hidden /> App Pizza
+          </p>
+          <p className="mt-2 text-sm text-hero-muted">Pizzas cuites au feu de bois, à emporter.</p>
+        </div>
+        <div>
+          <p className="mb-2 flex items-center gap-2 font-semibold">
+            <Clock className="size-4" aria-hidden /> Horaires
+          </p>
+          <p className="text-sm text-hero-muted">7 jours sur 7</p>
+          <p className="text-sm text-hero-muted">Midi : 11h – 14h</p>
+          <p className="text-sm text-hero-muted">Soir : 18h – 22h</p>
+        </div>
+        <nav aria-label="Liens" className="flex flex-col gap-2 text-sm text-hero-muted">
+          <Link to="/compte" className="hover:text-hero-foreground">Mon compte</Link>
+          <Link to="/inscription" className="hover:text-hero-foreground">Carte fidélité : 10 pizzas, 1 offerte</Link>
+          <Link to="/pizzaiolo" className="hover:text-hero-foreground">Espace pizzaiolo</Link>
+        </nav>
+      </div>
+    </footer>
+  );
+}
+
 function SectionTitle({ step, title }: { step: number; title: string }) {
   return (
     <div className="mb-5 flex items-center gap-3">
@@ -40,14 +104,17 @@ function Hero({ onOrder }: { onOrder: () => void }) {
   return (
     <section className="relative isolate overflow-hidden bg-hero text-hero-foreground">
       {imageOk && (
-        <img
-          src={HERO_IMAGE}
-          alt=""
-          onError={() => setImageOk(false)}
-          className="absolute inset-0 -z-10 size-full object-cover opacity-40"
-        />
+        <>
+          <img
+            src={HERO_IMAGE}
+            alt=""
+            onError={() => setImageOk(false)}
+            className="absolute inset-0 -z-20 size-full object-cover"
+          />
+          <div className="absolute inset-0 -z-10 bg-linear-to-b from-hero/80 via-hero/60 to-hero/90" aria-hidden />
+        </>
       )}
-      <div className="mx-auto flex max-w-6xl flex-col items-center px-4 py-20 text-center sm:py-28">
+      <div className="mx-auto flex max-w-6xl flex-col items-center px-4 pt-20 pb-28 text-center sm:pt-28 sm:pb-36">
         <motion.p
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -98,6 +165,7 @@ export default function CustomerBooking() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [menuFilter, setMenuFilter] = useState("all");
 
   useEffect(() => {
     Promise.all([fetchPizzas(), fetchTimeSlots()])
@@ -121,6 +189,8 @@ export default function CustomerBooking() {
   const discountCents = previewReward(lines, client ? client.loyaltyPoints : null);
   const totalCents = subtotalCents - discountCents;
   const selectedSlot = slots.find((s) => s.id === selectedSlotId);
+  const activeFilter = MENU_FILTERS.find((f) => f.key === menuFilter) ?? MENU_FILTERS[0];
+  const visiblePizzas = pizzas.filter(activeFilter.match);
 
   function setQuantity(pizzaId: string, delta: number) {
     setQuantities((prev) => ({
@@ -177,7 +247,7 @@ export default function CustomerBooking() {
   }
 
   return (
-    <div className="min-h-screen pb-28 lg:pb-16">
+    <div className="min-h-screen pb-24 lg:pb-0">
       <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
           <Link to="/" className="flex items-center gap-2">
@@ -206,13 +276,47 @@ export default function CustomerBooking() {
       </header>
 
       <Hero onOrder={scrollToMenu} />
+      <HowItWorks />
 
       <main className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-12 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-14">
           <section id="menu" className="scroll-mt-20">
             <SectionTitle step={1} title="Nos pizzas" />
+            <div
+              className="mb-6 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden"
+              role="group"
+              aria-label="Filtrer la carte"
+            >
+              {MENU_FILTERS.map((filter) => {
+                const count = pizzas.filter(filter.match).length;
+                if (count === 0) return null;
+                const active = filter.key === menuFilter;
+                return (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setMenuFilter(filter.key)}
+                    className={`flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm transition-colors ${
+                      active
+                        ? "border-primary bg-primary font-semibold text-primary-foreground"
+                        : "border-border bg-card hover:border-primary/60"
+                    }`}
+                  >
+                    {filter.label}
+                    <span
+                      className={`rounded-full px-1.5 text-xs tabular-nums ${
+                        active ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {pizzas.map((pizza) => (
+              {visiblePizzas.map((pizza) => (
                 <PizzaCard
                   key={pizza.id}
                   pizza={pizza}
@@ -287,6 +391,8 @@ export default function CustomerBooking() {
           </div>
         </div>
       </main>
+
+      <Footer />
 
       <div className="lg:hidden">
         <CartFooter totalCents={totalCents} itemCount={itemCount} submitting={submitting} onSubmit={handleSubmit} />

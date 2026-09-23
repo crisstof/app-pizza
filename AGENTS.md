@@ -49,6 +49,8 @@ No test suite exists yet.
 
 `Client` → `Order` → `OrderItem` → `Pizza`, with `Order` → `TimeSlot` and `Order` → `Payment` (optional, not yet wired to a real payment provider). Money is stored as integer cents (`priceCents`, `totalCents`, `discountCents`) to avoid floating-point rounding — never switch these to float/decimal without updating every call site.
 
+`Pizza.name` is unique, and `backend/prisma/seed.ts` holds the whole menu (15 pizzas) and upserts it by name, so re-running the seed updates the menu instead of duplicating it — edit the menu there. `Pizza.category` (`TOMATO` | `CREAM` | `SPECIAL`) drives the menu filters and `Pizza.tags` (`vegetarian`, `spicy`, `popular`, `new`) the card badges. `Pizza.imageUrl` points at `frontend/public/images/` (Unsplash photos, sources in `CREDITS.md` there).
+
 `Client.passwordHash` is nullable: `null` means a guest-only client created by upsert-on-email during checkout, never logged in. `Client.loyaltyPoints` is the stamp balance (see Loyalty below).
 
 `TimeSlot.capacity`/`reserved` model booking capacity per slot. `TimeSlot.startsAt` has a unique constraint, which the auto-generation logic below relies on for idempotency.
