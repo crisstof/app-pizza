@@ -13,6 +13,34 @@ export type ShopSettings = {
   slotCapacity: number;
   daysAhead: number;
   closedWeekdays: number[];
+  doughMarginPercent: number;
+};
+
+export type DoughService = "LUNCH" | "DINNER";
+
+export type ServiceForecast = {
+  service: DoughService;
+  booked: number;
+  average: number;
+  weeksUsed: number;
+  outliers: number;
+  expected: number;
+  marginPercent: number;
+  marginSource: "auto" | "setting";
+  recommended: number;
+  reliable: boolean;
+};
+
+export type DayForecast = { date: string; closed: boolean; services: ServiceForecast[]; total: number };
+
+export type DoughTotals = { prepared: number; sold: number; wasted: number; services: number; wasteRate: number | null };
+
+export type DoughLogs = {
+  days: number;
+  logs: { date: string; service: DoughService; prepared: number; wasted: number; sold: number; demo: boolean }[];
+  summary: DoughTotals;
+  previousSummary: DoughTotals;
+  recentSales: { date: string; service: DoughService; sold: number }[];
 };
 
 export type ClosedDay = { date: string; reason: string | null };
@@ -75,6 +103,12 @@ export const addClosedDay = (date: string, reason?: string) =>
   api<ClosedDay>("/api/admin/closed-days", jsonBody("POST", { date, reason }));
 export const removeClosedDay = (date: string) =>
   api<void>(`/api/admin/closed-days/${encodeURIComponent(date)}`, { method: "DELETE" });
+
+// Dough forecast and waste
+export const fetchDoughForecast = () => api<DayForecast[]>("/api/admin/dough/forecast");
+export const fetchDoughLogs = (days = 28) => api<DoughLogs>(`/api/admin/dough/logs?days=${days}`);
+export const saveDoughLog = (date: string, service: DoughService, entry: { prepared: number; wasted: number }) =>
+  api<unknown>(`/api/admin/dough/logs/${date}/${service}`, jsonBody("PUT", entry));
 
 // Orders and clients
 export const searchOrders = (q: string) => api<Order[]>(`/api/admin/orders?q=${encodeURIComponent(q)}`);

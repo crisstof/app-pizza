@@ -8,6 +8,7 @@ import {
   Pizza as PizzaIcon,
   ReceiptText,
   Users,
+  Wheat,
   type LucideIcon,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -18,6 +19,7 @@ import { fetchStaffSession, staffLogout } from "@/staffApi";
 const NAV: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: "/pizzaiolo", label: "Service", icon: Flame, end: true },
   { to: "/pizzaiolo/commandes", label: "Commandes", icon: ReceiptText },
+  { to: "/pizzaiolo/pates", label: "Pâtons", icon: Wheat },
   { to: "/pizzaiolo/carte", label: "Carte", icon: PizzaIcon },
   { to: "/pizzaiolo/creneaux", label: "Créneaux", icon: CalendarClock },
   { to: "/pizzaiolo/clients", label: "Clients", icon: Users },

@@ -66,6 +66,24 @@ model ShopSettings {
   slotCapacity   Int     @default(5)
   daysAhead      Int     @default(7)
   closedWeekdays Int[]   @default([])   // 0 = Sunday … 6 = Saturday
+  // Dough forecast safety margin used until there's enough history to
+  // compute one automatically (see lib/doughForecast.ts).
+  doughMarginPercent Int @default(10)
+}
+
+// End-of-service dough count, entered by staff: how many dough balls were
+// made and how many were thrown away. Sold pizzas come from the orders.
+model DoughLog {
+  date      String   // local "YYYY-MM-DD"
+  service   String   // "LUNCH" | "DINNER"
+  prepared  Int
+  wasted    Int
+  // Created by prisma/demo-history.ts; removed by its --clean.
+  demo      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([date, service])
 }
 
 // Exceptional closure (holiday…), as a local "YYYY-MM-DD" date.

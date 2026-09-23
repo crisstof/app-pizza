@@ -25,6 +25,7 @@ const settingsSchema = z
     slotCapacity: z.number().int().min(1).max(50),
     daysAhead: z.number().int().min(1).max(30),
     closedWeekdays: z.array(z.number().int().min(0).max(6)).max(7),
+    doughMarginPercent: z.number().int().min(0).max(50),
   })
   .refine((s) => !s.lunchOpen || s.lunchStart < s.lunchEnd, "Le midi doit finir après avoir commencé.")
   .refine((s) => !s.dinnerOpen || s.dinnerStart < s.dinnerEnd, "Le soir doit finir après avoir commencé.")

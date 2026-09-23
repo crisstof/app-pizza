@@ -28,6 +28,8 @@ npm run prisma:migrate     # create + apply a migration from schema.prisma chang
 npm run prisma:generate    # regenerate Prisma Client after schema changes
 npm run prisma:studio      # GUI at localhost:5555 to inspect/edit data
 npx tsx prisma/seed.ts     # create the starter pizzas that don't exist yet + upcoming time slots
+npx tsx prisma/demo-history.ts          # 8 weeks of fake past orders (@demo.local) + dough logs, for the forecast
+npx tsx prisma/demo-history.ts --clean  # remove all demo data (never touches real orders)
 ```
 
 No test suite exists yet.
@@ -98,6 +100,12 @@ Theme colors are CSS variables in `frontend/src/index.css`, stored as raw hex an
 A single shared password, `STAFF_PASSWORD`, protects the back-office. Login sets a separate `staff_session` cookie (JWT with `role: "staff"` and a fingerprint of the password, so changing the password logs everyone out; a customer `session` cookie never grants staff access), with a 5-failures-per-15-minutes lockout per IP. Customer login (`/api/auth/login`) has the same kind of guard, keyed on IP + email (5 tries) plus a per-IP cap (30) — never on the email alone, which would let anyone lock a customer out. Both use `createFailureLimiter` (`lib/rateLimit.ts`, in-memory, per process). Behind a reverse proxy, set `TRUST_PROXY` so `req.ip` is the visitor's address. `requireStaff` guards `GET /api/orders` (day view), `PATCH /api/orders/:id/status|eta`, and everything under `/api/admin/*` (menu CRUD + photo upload via multer, settings, slots, closed days, order search, clients, manual loyalty adjustment — the latter conditional so a balance can't go negative). The backend runs **Express 5**, which forwards errors thrown in async handlers to the JSON `errorHandler` in `lib/errors.ts` (500 "Erreur serveur.", or the status/message of a thrown `HttpError`) — handlers can simply `throw new HttpError(404, "…")`. Handlers with a middleware before them (`requireStaff`, multer) type their params explicitly (`req: Request<{ id: string }>`), since Express 5's types don't infer them through the middleware. Cancelling an order also gives its place back to the slot (`reserved` decrement in the same transaction).
 
 On the frontend, `/pizzaiolo` is a nested-route layout (`StaffLayout` checks the session, redirects to `/pizzaiolo/connexion`): Service (live day + "Pilotage du service": today's slots and sold-out switches), Commandes, Carte, Créneaux, Clients. Back-office calls live in `frontend/src/staffApi.ts` (same `api()` helper, which throws `ApiError` with the HTTP status); shared pieces in `frontend/src/components/staff/`. Customer pages read opening hours from the public `GET /api/settings`.
+
+### Dough forecast and waste (`backend/src/lib/doughForecast.ts`, `backend/src/routes/admin/dough.ts`, `frontend/src/pages/staff/Dough.tsx`)
+
+Staff prepare dough the day before, so `/pizzaiolo/pates` forecasts dough balls (1 per pizza) per service for today, tomorrow and the day after. A slot is "lunch" if it starts before `ShopSettings.dinnerStart`, else "dinner". Per service: weighted average of the same weekday over the last 8 weeks (weights 8…1, days with no slot skipped as closed, days under half / over double the median dropped as abnormal), never below pizzas already booked, times `1 + margin`. The margin is learned by backtesting the same forecast over the last 8 weeks (80th percentile of `actual / forecast − 1`, clamped 5–30 %), falling back to `ShopSettings.doughMarginPercent` below 6 data points. Everything is plain statistics returned with its inputs so the screen can explain each number — keep it that way rather than adding opaque models.
+
+`DoughLog` (`@@id([date, service])`, local `YYYY-MM-DD`) is the end-of-service count entered by staff: `prepared` / `wasted` (`wasted ≤ prepared`, no future dates); "sold" always comes from the orders. `demo = true` rows come from `prisma/demo-history.ts`, whose `--clean` removes only @demo.local clients' orders, demo logs and past slots left with no order.
 
 ## Environment
 
