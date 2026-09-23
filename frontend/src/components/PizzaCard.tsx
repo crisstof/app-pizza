@@ -30,7 +30,7 @@ export function PizzaCard({
             src={pizza.imageUrl}
             alt={pizza.name}
             loading="lazy"
-            className="size-full object-cover"
+            className="absolute inset-0 size-full object-cover"
           />
         ) : (
           <div className="flex size-full items-center justify-center text-primary/60">

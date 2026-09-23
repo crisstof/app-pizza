@@ -8,9 +8,24 @@ async function main() {
   if (pizzaCount === 0) {
     await prisma.pizza.createMany({
       data: [
-        { name: "Margherita", description: "Tomate, mozzarella, basilic", priceCents: 900 },
-        { name: "Reine", description: "Jambon, champignons, mozzarella", priceCents: 1100 },
-        { name: "4 Fromages", description: "Mozzarella, gorgonzola, chèvre, emmental", priceCents: 1200 },
+        {
+          name: "Margherita",
+          description: "Tomate, mozzarella, basilic",
+          priceCents: 900,
+          imageUrl: "/images/margherita.jpg",
+        },
+        {
+          name: "Reine",
+          description: "Jambon, champignons, mozzarella",
+          priceCents: 1100,
+          imageUrl: "/images/reine.jpg",
+        },
+        {
+          name: "4 Fromages",
+          description: "Mozzarella, gorgonzola, chèvre, emmental",
+          priceCents: 1200,
+          imageUrl: "/images/4-fromages.jpg",
+        },
       ],
     });
   }
