@@ -25,6 +25,9 @@
   --input: #fecaca;
   --ring: #dc2626;
   --radius: 0.75rem;
+  --hero: #7f1d1d;
+  --hero-foreground: #fef2f2;
+  --hero-muted: #fecaca;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,6 +49,9 @@
     --border: #4a1f1f;
     --input: #4a1f1f;
     --ring: #ef4444;
+    --hero: #3a0d0d;
+    --hero-foreground: #fde4e1;
+    --hero-muted: #e7b4ad;
   }
 }
 
@@ -114,6 +120,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-hero: var(--hero);
+  --color-hero-foreground: var(--hero-foreground);
+  --color-hero-muted: var(--hero-muted);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);

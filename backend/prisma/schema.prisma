@@ -35,13 +35,17 @@ model Client {
   orders Order[]
 }
 
+// category: "TOMATO" | "CREAM" | "SPECIAL" (base de la pizza, for menu filters)
+// tags: any of "vegetarian" | "spicy" | "popular" | "new" (card badges)
 model Pizza {
-  id          String  @id @default(cuid())
-  name        String
+  id          String   @id @default(cuid())
+  name        String   @unique
   description String?
   priceCents  Int
   imageUrl    String?
-  available   Boolean @default(true)
+  category    String   @default("TOMATO")
+  tags        String[] @default([])
+  available   Boolean  @default(true)
 
   orderItems OrderItem[]
 }
