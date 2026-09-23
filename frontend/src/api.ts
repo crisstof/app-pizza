@@ -5,6 +5,7 @@ export type Pizza = {
   name: string;
   description: string | null;
   priceCents: number;
+  imageUrl: string | null;
   available: boolean;
 };
 

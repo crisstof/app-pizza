@@ -1,13 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-function formatPrice(cents: number) {
-  return (cents / 100).toLocaleString("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-  });
-}
+import { formatPrice } from "@/lib/format";
 
 export function CartFooter({
   totalCents,
