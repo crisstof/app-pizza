@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  BarChart3,
   CalendarClock,
   ChefHat,
   ExternalLink,
@@ -12,7 +13,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ApiError } from "@/api";
 import { Button } from "@/components/ui/button";
 import { fetchStaffSession, staffLogout } from "@/staffApi";
 
@@ -23,6 +23,7 @@ const NAV: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: "/pizzaiolo/carte", label: "Carte", icon: PizzaIcon },
   { to: "/pizzaiolo/creneaux", label: "Créneaux", icon: CalendarClock },
   { to: "/pizzaiolo/clients", label: "Clients", icon: Users },
+  { to: "/pizzaiolo/stats", label: "Statistiques", icon: BarChart3 },
 ];
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -40,14 +41,14 @@ export default function StaffLayout() {
   useEffect(() => {
     let cancelled = false;
     fetchStaffSession()
-      .then(() => !cancelled && setChecked(true))
-      .catch((err) => {
+      .then(({ staff }) => {
         if (cancelled) return;
-        if (err instanceof ApiError && err.status === 401) {
-          navigate("/pizzaiolo/connexion", { replace: true, state: { from: location.pathname } });
-        } else {
-          setChecked(true); // Server unreachable: let the page show its own offline state.
-        }
+        if (staff) setChecked(true);
+        else navigate("/pizzaiolo/connexion", { replace: true, state: { from: location.pathname } });
+      })
+      .catch(() => {
+        // Server unreachable: let the page show its own offline state.
+        if (!cancelled) setChecked(true);
       });
     return () => {
       cancelled = true;

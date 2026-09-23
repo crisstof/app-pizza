@@ -38,7 +38,7 @@ staffRouter.post("/logout", (_req, res) => {
   res.status(204).end();
 });
 
+// Session check for the back-office layout: 200 either way (not an error).
 staffRouter.get("/me", (req, res) => {
-  if (!isStaff(req)) return res.status(401).json({ error: "Non connecté." });
-  res.json({ ok: true });
+  res.json({ staff: isStaff(req) });
 });

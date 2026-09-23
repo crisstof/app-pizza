@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { z } from "zod";
 
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET manquant dans l'environnement.");
@@ -14,9 +15,18 @@ export function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
 }
 
-export function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+// Compared against when the email has no account, so a login attempt takes
+// the same bcrypt time either way and doesn't reveal which emails exist.
+const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", 10);
+
+/** Constant-time-ish check: false for a missing hash, after the same work. */
+export async function verifyPasswordOrDummy(password: string, hash: string | null | undefined): Promise<boolean> {
+  const ok = await bcrypt.compare(password, hash ?? DUMMY_HASH);
+  return Boolean(hash) && ok;
 }
+
+/** Emails are stored and looked up lowercased (a single account per address). */
+export const normalizedEmail = () => z.string().trim().toLowerCase().email();
 
 export function setSessionCookie(res: Response, clientId: string) {
   const token = jwt.sign({ clientId }, JWT_SECRET, { expiresIn: "30d" });

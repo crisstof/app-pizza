@@ -8,9 +8,10 @@
 // Never touches real orders: days/services that already have real orders
 // are skipped, and --clean only deletes @demo.local clients' orders, demo
 // dough logs, and past slots left without any order.
-import { PrismaClient } from "@prisma/client";
+import { serviceOf } from "../src/lib/doughForecast.js";
+import { getSettings, localDateKey, serviceWindows } from "../src/lib/settings.js";
+import { prisma } from "../src/prisma.js";
 
-const prisma = new PrismaClient();
 const DEMO_DOMAIN = "@demo.local";
 const WEEKS = 8;
 const SLOT_MINUTES = 30;
@@ -31,10 +32,6 @@ const pick = <T>(items: T[], weights: number[]) => {
   for (let i = 0; i < items.length; i++) if ((r -= weights[i]) <= 0) return items[i];
   return items[items.length - 1];
 };
-
-function dateKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 const NAMES = ["Camille", "Lucas", "Emma", "Hugo", "Chloé", "Louis", "Inès", "Nathan", "Jade", "Gabriel", "Manon", "Arthur"];
 // Sunday … Saturday: quiet start of week, busy Friday/Saturday.
@@ -63,25 +60,20 @@ async function create() {
   if (await prisma.client.count({ where: { email: { endsWith: DEMO_DOMAIN } } })) {
     throw new Error("Un historique de démo existe déjà. Lance d'abord : npx tsx prisma/demo-history.ts --clean");
   }
-  const settings = await prisma.shopSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  const settings = await getSettings();
   const pizzas = await prisma.pizza.findMany({ where: { archivedAt: null } });
   if (pizzas.length === 0) throw new Error("Aucune pizza : lance d'abord le seed.");
   const pizzaWeights = pizzas.map((p) => (p.tags.includes("popular") ? 3 : p.tags.includes("new") ? 1.5 : 1));
 
   const today = startOfToday();
-  const windows = [
-    ...(settings.lunchOpen ? [{ service: "LUNCH" as const, start: settings.lunchStart, end: settings.lunchEnd }] : []),
-    ...(settings.dinnerOpen ? [{ service: "DINNER" as const, start: settings.dinnerStart, end: settings.dinnerEnd }] : []),
-  ];
+  const windows = serviceWindows(settings);
 
   // Real orders already in the window: those services are left alone.
   const realOrders = await prisma.order.findMany({
     where: { timeSlot: { startsAt: { gte: new Date(today.getTime() - WEEKS * 7 * 86400000), lt: today } } },
-    select: { timeSlot: { select: { startsAt: true } } },
+    select: { timeSlot: { select: { startsAt: true, service: true } } },
   });
-  const serviceOf = (d: Date) =>
-    settings.dinnerOpen && d.getHours() * 60 + d.getMinutes() >= settings.dinnerStart ? "DINNER" : "LUNCH";
-  const taken = new Set(realOrders.map((o) => `${dateKey(o.timeSlot.startsAt)}|${serviceOf(o.timeSlot.startsAt)}`));
+  const taken = new Set(realOrders.map((o) => `${localDateKey(o.timeSlot.startsAt)}|${serviceOf(o.timeSlot, settings)}`));
 
   const clients = await Promise.all(
     NAMES.map((name, i) =>
@@ -93,7 +85,7 @@ async function create() {
 
   type PlannedOrder = { id: string; slotStart: Date; clientId: string; items: { pizzaId: string; quantity: number; price: number }[]; cancelled: boolean };
   const planned: PlannedOrder[] = [];
-  const slotStarts: Date[] = [];
+  const slotStarts: { startsAt: Date; service: string }[] = [];
   const logs: { date: string; service: string; prepared: number; wasted: number; demo: boolean }[] = [];
   let orderNumber = 0;
 
@@ -105,7 +97,7 @@ async function create() {
     const progress = 1 - daysAgo / (WEEKS * 7);
 
     for (const window of windows) {
-      const key = `${dateKey(day)}|${window.service}`;
+      const key = `${localDateKey(day)}|${window.service}`;
       if (taken.has(key)) continue;
 
       const starts: Date[] = [];
@@ -114,7 +106,7 @@ async function create() {
         s.setHours(Math.floor(m / 60), m % 60, 0, 0);
         starts.push(s);
       }
-      slotStarts.push(...starts);
+      slotStarts.push(...starts.map((startsAt) => ({ startsAt, service: window.service })));
 
       const noise = (between(0.8, 1.2) + between(0.8, 1.2)) / 2;
       const target = Math.round(BASE[window.service] * WEEKDAY_FACTOR[day.getDay()] * (0.95 + 0.1 * progress) * noise);
@@ -144,19 +136,23 @@ async function create() {
 
       const surplus = between(0.18, 0.4) * (1 - 0.6 * progress);
       const prepared = Math.round(sold * (1 + surplus));
-      logs.push({ date: dateKey(day), service: window.service, prepared, wasted: prepared - sold, demo: true });
+      logs.push({ date: localDateKey(day), service: window.service, prepared, wasted: prepared - sold, demo: true });
     }
   }
 
   await prisma.timeSlot.createMany({
-    data: slotStarts.map((startsAt) => ({
+    data: slotStarts.map(({ startsAt, service }) => ({
       startsAt,
       endsAt: new Date(startsAt.getTime() + SLOT_MINUTES * 60000),
       capacity: settings.slotCapacity,
+      service,
     })),
     skipDuplicates: true,
   });
-  const slots = await prisma.timeSlot.findMany({ where: { startsAt: { in: slotStarts } }, select: { id: true, startsAt: true } });
+  const slots = await prisma.timeSlot.findMany({
+    where: { startsAt: { in: slotStarts.map((s) => s.startsAt) } },
+    select: { id: true, startsAt: true },
+  });
   const slotId = new Map(slots.map((s) => [s.startsAt.getTime(), s.id]));
 
   const minutes = (n: number) => n * 60000;
@@ -192,7 +188,11 @@ async function create() {
 
   // Keep slot bookkeeping consistent with the orders now in them.
   const perSlot = new Map<string, number>();
-  for (const o of planned) if (!o.cancelled) perSlot.set(slotId.get(o.slotStart.getTime())!, (perSlot.get(slotId.get(o.slotStart.getTime())!) ?? 0) + 1);
+  for (const o of planned) {
+    if (o.cancelled) continue;
+    const id = slotId.get(o.slotStart.getTime())!;
+    perSlot.set(id, (perSlot.get(id) ?? 0) + 1);
+  }
   for (const [id, reserved] of perSlot) {
     await prisma.timeSlot.update({ where: { id }, data: { reserved, capacity: Math.max(settings.slotCapacity, reserved) } });
   }

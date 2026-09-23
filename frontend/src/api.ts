@@ -115,6 +115,11 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
+/** Absolute backend URL, for what can't go through `api()` (EventSource…). */
+export function apiUrl(path: string) {
+  return `${API_URL}${path}`;
+}
+
 /** JSON body helper for POST/PUT/PATCH calls. */
 export function jsonBody(method: string, body: unknown): RequestInit {
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
@@ -189,6 +194,7 @@ export function logout(): Promise<void> {
   return api("/api/auth/logout", { method: "POST" });
 }
 
-export function fetchMe(): Promise<AuthClient> {
+/** The logged-in client, or null when logged out. */
+export function fetchMe(): Promise<AuthClient | null> {
   return api("/api/auth/me");
 }

@@ -5,11 +5,13 @@
  */
 export function createFailureLimiter({ max, windowMs }: { max: number; windowMs: number }) {
   const failures = new Map<string, { count: number; resetAt: number }>();
+  let lastPrune = 0;
 
-  // Drop expired entries now and then, so a flood of distinct keys can't grow
-  // the map forever.
+  // Drop expired entries at most once a minute, so a flood of distinct keys
+  // can't grow the map forever, without scanning it on every request.
   function prune(now: number) {
-    if (failures.size < 1000) return;
+    if (now - lastPrune < 60_000) return;
+    lastPrune = now;
     for (const [key, entry] of failures) if (entry.resetAt < now) failures.delete(key);
   }
 

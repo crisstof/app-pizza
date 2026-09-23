@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { attachClientIfPresent, requireAuth } from "../lib/auth.js";
+import { attachClientIfPresent, normalizedEmail, requireAuth } from "../lib/auth.js";
+import { emitOrderEvent } from "../lib/events.js";
 import { requireStaff } from "../lib/staffAuth.js";
 import { prisma } from "../prisma.js";
 
@@ -57,7 +58,7 @@ class UnavailablePizzaError extends Error {
 
 const createOrderSchema = z.object({
   clientName: z.string().min(1).optional(),
-  clientEmail: z.string().email().optional(),
+  clientEmail: normalizedEmail().optional(),
   clientPhone: z.string().optional(),
   timeSlotId: z.string(),
   items: z
@@ -176,6 +177,7 @@ ordersRouter.post("/", attachClientIfPresent, async (req, res) => {
       });
     });
 
+    emitOrderEvent({ type: "created", orderId: order.id });
     res.status(201).json(order);
   } catch (err) {
     if (err instanceof Error && err.message === "SLOT_FULL") {
@@ -321,6 +323,7 @@ ordersRouter.patch("/:id/status", requireStaff, async (req: Request<{ id: string
     include: DASHBOARD_ORDER_INCLUDE,
   });
 
+  emitOrderEvent({ type: "updated", orderId: updated.id });
   res.json(updated);
 });
 
@@ -355,5 +358,6 @@ ordersRouter.patch("/:id/eta", requireStaff, async (req: Request<{ id: string }>
     return res.status(409).json({ error: "Cette commande n'est plus en cuisine." });
   }
 
+  emitOrderEvent({ type: "updated", orderId: updated.id });
   res.json(updated);
 });

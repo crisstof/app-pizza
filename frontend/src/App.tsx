@@ -11,6 +11,7 @@ import MenuAdmin from "@/pages/staff/MenuAdmin";
 import Orders from "@/pages/staff/Orders";
 import Service from "@/pages/staff/Service";
 import Slots from "@/pages/staff/Slots";
+import Stats from "@/pages/staff/Stats";
 import StaffLayout from "@/pages/staff/StaffLayout";
 import StaffLogin from "@/pages/staff/StaffLogin";
 
@@ -34,6 +35,7 @@ function App() {
             <Route path="carte" element={<MenuAdmin />} />
             <Route path="creneaux" element={<Slots />} />
             <Route path="clients" element={<Clients />} />
+            <Route path="stats" element={<Stats />} />
           </Route>
         </Routes>
       </AuthProvider>

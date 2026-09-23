@@ -8,11 +8,13 @@ export function getSettings(): Promise<ShopSettings> {
   return prisma.shopSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
 }
 
+export type ServiceName = "LUNCH" | "DINNER";
+
 /** Open service windows as [start, end) minutes since local midnight. */
-export function serviceWindows(settings: ShopSettings): { start: number; end: number }[] {
-  const windows: { start: number; end: number }[] = [];
-  if (settings.lunchOpen) windows.push({ start: settings.lunchStart, end: settings.lunchEnd });
-  if (settings.dinnerOpen) windows.push({ start: settings.dinnerStart, end: settings.dinnerEnd });
+export function serviceWindows(settings: ShopSettings): { service: ServiceName; start: number; end: number }[] {
+  const windows: { service: ServiceName; start: number; end: number }[] = [];
+  if (settings.lunchOpen) windows.push({ service: "LUNCH", start: settings.lunchStart, end: settings.lunchEnd });
+  if (settings.dinnerOpen) windows.push({ service: "DINNER", start: settings.dinnerStart, end: settings.dinnerEnd });
   return windows;
 }
 

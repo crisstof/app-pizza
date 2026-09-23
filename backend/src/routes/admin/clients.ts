@@ -20,60 +20,54 @@ function withoutHash<T extends { passwordHash: string | null }>({ passwordHash, 
   return { ...client, hasAccount: passwordHash !== null };
 }
 
-adminClientsRouter.get(
-  "/",
-  async (req, res) => {
-    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-    const clients = await prisma.client.findMany({
-      where: q
-        ? {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { email: { contains: q, mode: "insensitive" } },
-              { phone: { contains: q } },
-            ],
-          }
-        : undefined,
-      select: { ...CLIENT_FIELDS, _count: { select: { orders: true } } },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    });
+adminClientsRouter.get("/", async (req, res) => {
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const clients = await prisma.client.findMany({
+    where: q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { email: { contains: q, mode: "insensitive" } },
+            { phone: { contains: q } },
+          ],
+        }
+      : undefined,
+    select: { ...CLIENT_FIELDS, _count: { select: { orders: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
 
-    // Money spent, not counting cancelled orders, in one grouped query.
-    const spent = await prisma.order.groupBy({
-      by: ["clientId"],
-      where: { clientId: { in: clients.map((c) => c.id) }, status: { not: "CANCELLED" } },
-      _sum: { totalCents: true },
-    });
-    const spentById = new Map(spent.map((s) => [s.clientId, s._sum.totalCents ?? 0]));
+  // Money spent, not counting cancelled orders, in one grouped query.
+  const spent = await prisma.order.groupBy({
+    by: ["clientId"],
+    where: { clientId: { in: clients.map((c) => c.id) }, status: { not: "CANCELLED" } },
+    _sum: { totalCents: true },
+  });
+  const spentById = new Map(spent.map((s) => [s.clientId, s._sum.totalCents ?? 0]));
 
-    res.json(
-      clients.map(({ _count, ...client }) => ({
-        ...withoutHash(client),
-        orderCount: _count.orders,
-        spentCents: spentById.get(client.id) ?? 0,
-      }))
-    );
-  }
-);
+  res.json(
+    clients.map(({ _count, ...client }) => ({
+      ...withoutHash(client),
+      orderCount: _count.orders,
+      spentCents: spentById.get(client.id) ?? 0,
+    })),
+  );
+});
 
-adminClientsRouter.get(
-  "/:id",
-  async (req, res) => {
-    const client = await prisma.client.findUnique({
-      where: { id: req.params.id },
-      select: {
-        ...CLIENT_FIELDS,
-        orders: {
-          include: { items: { include: { pizza: true } }, timeSlot: true },
-          orderBy: { createdAt: "desc" },
-        },
+adminClientsRouter.get("/:id", async (req, res) => {
+  const client = await prisma.client.findUnique({
+    where: { id: req.params.id },
+    select: {
+      ...CLIENT_FIELDS,
+      orders: {
+        include: { items: { include: { pizza: true } }, timeSlot: true },
+        orderBy: { createdAt: "desc" },
       },
-    });
-    if (!client) throw new HttpError(404, "Client introuvable.");
-    res.json(withoutHash(client));
-  }
-);
+    },
+  });
+  if (!client) throw new HttpError(404, "Client introuvable.");
+  res.json(withoutHash(client));
+});
 
 const loyaltySchema = z.object({
   delta: z
@@ -85,24 +79,21 @@ const loyaltySchema = z.object({
 });
 
 // Manual stamp adjustment (goodwill gesture, correction).
-adminClientsRouter.patch(
-  "/:id/loyalty",
-  async (req, res) => {
-    const parsed = loyaltySchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const { delta } = parsed.data;
+adminClientsRouter.patch("/:id/loyalty", async (req, res) => {
+  const parsed = loyaltySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { delta } = parsed.data;
 
-    // Conditional on the balance at write time, so a removal can never take
-    // it below zero, even racing an order that spends stamps.
-    const result = await prisma.client.updateMany({
-      where: { id: req.params.id, ...(delta < 0 && { loyaltyPoints: { gte: -delta } }) },
-      data: { loyaltyPoints: { increment: delta } },
-    });
-    const client = await prisma.client.findUnique({ where: { id: req.params.id }, select: CLIENT_FIELDS });
-    if (!client) throw new HttpError(404, "Client introuvable.");
-    if (result.count === 0) {
-      throw new HttpError(409, `Ce client n'a que ${client.loyaltyPoints} tampon${client.loyaltyPoints > 1 ? "s" : ""}.`);
-    }
-    res.json(withoutHash(client));
+  // Conditional on the balance at write time, so a removal can never take
+  // it below zero, even racing an order that spends stamps.
+  const result = await prisma.client.updateMany({
+    where: { id: req.params.id, ...(delta < 0 && { loyaltyPoints: { gte: -delta } }) },
+    data: { loyaltyPoints: { increment: delta } },
+  });
+  const client = await prisma.client.findUnique({ where: { id: req.params.id }, select: CLIENT_FIELDS });
+  if (!client) throw new HttpError(404, "Client introuvable.");
+  if (result.count === 0) {
+    throw new HttpError(409, `Ce client n'a que ${client.loyaltyPoints} tampon${client.loyaltyPoints > 1 ? "s" : ""}.`);
   }
-);
+  res.json(withoutHash(client));
+});

@@ -107,7 +107,9 @@ function SettingsCard({ onSaved }: { onSaved: () => void }) {
     if (!settings) return;
     setSaving(true);
     try {
-      setSettings(await saveShopSettings(settings));
+      // Only this card's fields: the dough margin is edited on the Pâtons page.
+      const { doughMarginPercent: _margin, ...hours } = settings;
+      setSettings(await saveShopSettings(hours));
       toast.success("Horaires enregistrés, créneaux mis à jour");
       onSaved();
     } catch (err) {

@@ -9,8 +9,10 @@ import { refreshUpcomingTimeSlots } from "./lib/timeSlots.js";
 import { UPLOADS_DIR } from "./lib/uploads.js";
 import { adminClientsRouter } from "./routes/admin/clients.js";
 import { adminDoughRouter } from "./routes/admin/dough.js";
+import { adminEventsRouter } from "./routes/admin/events.js";
 import { adminOrdersRouter } from "./routes/admin/orders.js";
 import { adminPizzasRouter } from "./routes/admin/pizzas.js";
+import { adminStatsRouter } from "./routes/admin/stats.js";
 import { adminTimeSlotsRouter } from "./routes/admin/timeSlots.js";
 import { pizzasRouter } from "./routes/pizzas.js";
 import { settingsRouter } from "./routes/settings.js";
@@ -20,8 +22,15 @@ import { ordersRouter } from "./routes/orders.js";
 
 const app = express();
 // Behind a reverse proxy, trust its X-Forwarded-For so req.ip (used by the
-// login lockouts) is the visitor's address, not the proxy's.
-if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY));
+// login lockouts) is the visitor's address, not the proxy's. A hop count
+// ("1") or any of Express's forms ("loopback", "true", an IP/subnet list).
+const trustProxy = process.env.TRUST_PROXY?.trim();
+if (trustProxy) {
+  app.set(
+    "trust proxy",
+    /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy === "true" ? true : trustProxy
+  );
+}
 app.use(cors({ origin: process.env.FRONTEND_URL ?? "http://localhost:5173", credentials: true }));
 app.use(cookieParser());
 app.use(express.json());
@@ -44,6 +53,8 @@ app.use("/api/admin/pizzas", adminPizzasRouter);
 app.use("/api/admin/orders", adminOrdersRouter);
 app.use("/api/admin/clients", adminClientsRouter);
 app.use("/api/admin/dough", adminDoughRouter);
+app.use("/api/admin/events", adminEventsRouter);
+app.use("/api/admin/stats", adminStatsRouter);
 app.use("/api/admin", adminTimeSlotsRouter);
 
 app.use(errorHandler);
