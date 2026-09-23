@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import {
   createOrder,
   fetchPizzas,
+  fetchShopHours,
   fetchTimeSlots,
   LOYALTY_REWARD_THRESHOLD,
   type Pizza,
+  type ShopHours,
   type TimeSlot,
 } from "@/api";
 import { useAuth } from "@/context/AuthContext";
@@ -19,6 +21,7 @@ import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatHour, WEEKDAYS } from "@/lib/format";
 import { previewReward } from "@/lib/loyalty";
 
 const HERO_IMAGE = "/images/hero.jpg";
@@ -31,17 +34,20 @@ const MENU_FILTERS: { key: string; label: string; match: (p: Pizza) => boolean }
   { key: "vegetarian", label: "Végétariennes", match: (p) => p.tags.includes("vegetarian") },
 ];
 
-const STEPS = [
-  { icon: PizzaIcon, title: "Choisis tes pizzas", text: "Classiques, base crème ou spécialités." },
-  { icon: CalendarClock, title: "Réserve ton créneau", text: "Midi ou soir, jusqu'à 7 jours à l'avance." },
-  { icon: ShoppingBag, title: "Récupère-la bien chaude", text: "Elle sort du four à l'heure que tu as choisie." },
-];
-
-function HowItWorks() {
+function HowItWorks({ hours }: { hours: ShopHours | null }) {
+  const steps = [
+    { icon: PizzaIcon, title: "Choisis tes pizzas", text: "Classiques, base crème ou spécialités." },
+    {
+      icon: CalendarClock,
+      title: "Réserve ton créneau",
+      text: hours ? `Jusqu'à ${hours.daysAhead} jour${hours.daysAhead > 1 ? "s" : ""} à l'avance.` : "Midi ou soir, à l'avance.",
+    },
+    { icon: ShoppingBag, title: "Récupère-la bien chaude", text: "Elle sort du four à l'heure que tu as choisie." },
+  ];
   return (
     <section aria-label="Comment ça marche" className="relative z-10 mx-auto -mt-12 max-w-6xl px-4">
       <ol className="grid gap-4 rounded-2xl border border-border bg-card p-6 shadow-lg sm:grid-cols-3">
-        {STEPS.map(({ icon: Icon, title, text }, i) => (
+        {steps.map(({ icon: Icon, title, text }, i) => (
           <li key={title} className="flex items-start gap-4">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
               <Icon className="size-5" aria-hidden />
@@ -59,7 +65,14 @@ function HowItWorks() {
   );
 }
 
-function Footer() {
+// Shop hours come from the back-office settings (Créneaux et horaires).
+function openDaysLabel(closedWeekdays: number[]) {
+  if (closedWeekdays.length === 0) return "7 jours sur 7";
+  const names = [1, 2, 3, 4, 5, 6, 0].filter((d) => closedWeekdays.includes(d)).map((d) => WEEKDAYS[d].toLowerCase());
+  return `Fermé le ${names.join(", le ")}`;
+}
+
+function Footer({ hours }: { hours: ShopHours | null }) {
   return (
     <footer className="mt-16 bg-hero text-hero-foreground">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
@@ -73,9 +86,21 @@ function Footer() {
           <p className="mb-2 flex items-center gap-2 font-semibold">
             <Clock className="size-4" aria-hidden /> Horaires
           </p>
-          <p className="text-sm text-hero-muted">7 jours sur 7</p>
-          <p className="text-sm text-hero-muted">Midi : 11h – 14h</p>
-          <p className="text-sm text-hero-muted">Soir : 18h – 22h</p>
+          {hours && (
+            <>
+              <p className="text-sm text-hero-muted">{openDaysLabel(hours.closedWeekdays)}</p>
+              {hours.lunchOpen && (
+                <p className="text-sm text-hero-muted">
+                  Midi : {formatHour(hours.lunchStart)} – {formatHour(hours.lunchEnd)}
+                </p>
+              )}
+              {hours.dinnerOpen && (
+                <p className="text-sm text-hero-muted">
+                  Soir : {formatHour(hours.dinnerStart)} – {formatHour(hours.dinnerEnd)}
+                </p>
+              )}
+            </>
+          )}
         </div>
         <nav aria-label="Liens" className="flex flex-col gap-2 text-sm text-hero-muted">
           <Link to="/compte" className="hover:text-hero-foreground">Mon compte</Link>
@@ -166,6 +191,7 @@ export default function CustomerBooking() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [menuFilter, setMenuFilter] = useState("all");
+  const [hours, setHours] = useState<ShopHours | null>(null);
 
   useEffect(() => {
     Promise.all([fetchPizzas(), fetchTimeSlots()])
@@ -175,6 +201,8 @@ export default function CustomerBooking() {
       })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
+    // Footer / lunch-dinner split only: the page works without it.
+    fetchShopHours().then(setHours).catch(() => {});
   }, []);
 
   const lines = useMemo(
@@ -276,7 +304,7 @@ export default function CustomerBooking() {
       </header>
 
       <Hero onOrder={scrollToMenu} />
-      <HowItWorks />
+      <HowItWorks hours={hours} />
 
       <main className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-12 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-14">
@@ -329,7 +357,12 @@ export default function CustomerBooking() {
 
           <section id="creneau" className="scroll-mt-20">
             <SectionTitle step={2} title="Ton créneau de retrait" />
-            <TimeSlotPicker slots={slots} selectedId={selectedSlotId} onSelect={setSelectedSlotId} />
+            <TimeSlotPicker
+              slots={slots}
+              selectedId={selectedSlotId}
+              onSelect={setSelectedSlotId}
+              eveningStartMinutes={hours?.dinnerStart}
+            />
           </section>
 
           <section id="coordonnees" className="scroll-mt-20">
@@ -392,7 +425,7 @@ export default function CustomerBooking() {
         </div>
       </main>
 
-      <Footer />
+      <Footer hours={hours} />
 
       <div className="lg:hidden">
         <CartFooter totalCents={totalCents} itemCount={itemCount} submitting={submitting} onSubmit={handleSubmit} />

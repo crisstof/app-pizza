@@ -3,7 +3,13 @@ import { motion } from "framer-motion";
 import type { TimeSlot } from "@/api";
 import { formatTime } from "@/lib/format";
 
-const EVENING_START_HOUR = 15;
+// Fallback lunch/dinner split when the shop hours haven't loaded.
+const DEFAULT_EVENING_START_MINUTES = 15 * 60;
+
+function minutesOfDay(iso: string) {
+  const date = new Date(iso);
+  return date.getHours() * 60 + date.getMinutes();
+}
 
 function dayKey(date: Date) {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
@@ -62,10 +68,13 @@ export function TimeSlotPicker({
   slots,
   selectedId,
   onSelect,
+  eveningStartMinutes = DEFAULT_EVENING_START_MINUTES,
 }: {
   slots: TimeSlot[];
   selectedId: string;
   onSelect: (id: string) => void;
+  /** Slots from this time of day on are listed under "Soir" (shop's dinner start). */
+  eveningStartMinutes?: number;
 }) {
   const days = useMemo(() => {
     const byDay = new Map<string, Day>();
@@ -91,8 +100,8 @@ export function TimeSlotPicker({
     return <p className="text-sm text-muted-foreground">Aucun créneau disponible pour le moment.</p>;
   }
 
-  const lunch = activeDay.slots.filter((s) => new Date(s.startsAt).getHours() < EVENING_START_HOUR);
-  const dinner = activeDay.slots.filter((s) => new Date(s.startsAt).getHours() >= EVENING_START_HOUR);
+  const lunch = activeDay.slots.filter((s) => minutesOfDay(s.startsAt) < eveningStartMinutes);
+  const dinner = activeDay.slots.filter((s) => minutesOfDay(s.startsAt) >= eveningStartMinutes);
 
   return (
     <div>

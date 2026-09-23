@@ -21,6 +21,17 @@ function isUniqueNameError(err: unknown) {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
 }
 
+/**
+ * An archived pizza keeps its name (past orders show it), until a new or
+ * renamed pizza wants that name: then the archived one steps aside.
+ */
+async function freeArchivedName(name: string) {
+  await prisma.pizza.updateMany({
+    where: { name, archivedAt: { not: null } },
+    data: { name: `${name} (ancienne)` },
+  });
+}
+
 function isNotFoundError(err: unknown) {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025";
 }
@@ -44,6 +55,7 @@ adminPizzasRouter.post(
     const parsed = pizzaSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     try {
+      await freeArchivedName(parsed.data.name);
       const pizza = await prisma.pizza.create({ data: parsed.data });
       res.status(201).json(pizza);
     } catch (err) {
@@ -59,6 +71,7 @@ adminPizzasRouter.patch(
     const parsed = pizzaSchema.partial().safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     try {
+      if (parsed.data.name) await freeArchivedName(parsed.data.name);
       const pizza = await prisma.pizza.update({
         where: { id: req.params.id, archivedAt: null },
         data: parsed.data,
@@ -93,10 +106,9 @@ adminPizzasRouter.delete(
         if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003")) throw err;
       }
     }
-    // Archiving frees the name for a future pizza with the same name.
     await prisma.pizza.update({
       where: { id: pizza.id },
-      data: { archivedAt: new Date(), available: false, name: `${pizza.name} (archivée ${pizza.id.slice(-6)})` },
+      data: { archivedAt: new Date(), available: false },
     });
     res.json({ deleted: false, archived: true });
   })

@@ -34,6 +34,6 @@ export function parseLocalDate(value: string): Date | null {
 
 /** The fields customers may see (footer hours, lunch/dinner split). */
 export function publicSettings(settings: ShopSettings) {
-  const { lunchOpen, lunchStart, lunchEnd, dinnerOpen, dinnerStart, dinnerEnd, closedWeekdays } = settings;
-  return { lunchOpen, lunchStart, lunchEnd, dinnerOpen, dinnerStart, dinnerEnd, closedWeekdays };
+  const { lunchOpen, lunchStart, lunchEnd, dinnerOpen, dinnerStart, dinnerEnd, closedWeekdays, daysAhead } = settings;
+  return { lunchOpen, lunchStart, lunchEnd, dinnerOpen, dinnerStart, dinnerEnd, closedWeekdays, daysAhead };
 }
