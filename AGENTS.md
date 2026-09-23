@@ -69,6 +69,10 @@ Guest checkout (no session) upserts a `Client` by email — but **refuses** if t
 
 1 point per pizza ordered. At `LOYALTY_REWARD_THRESHOLD` (10) points, the cheapest item in the *next* order is free. The 10-point debit uses a conditional `updateMany` (`WHERE loyaltyPoints >= threshold`) rather than reading the balance and applying a relative `increment`/`decrement` — otherwise two concurrent orders could both read a balance ≥10 and both redeem, double-spending the same stamps. Cancelling an order claws back the points *it earned* (not any it redeemed) via `Order.pointsEarned`, stored at creation time.
 
+### Live order tracking (`backend/src/routes/orders.ts`, `frontend/src/pages/OrderTracking.tsx`)
+
+Each status change also stamps its own column (`confirmedAt`, `preparingAt`, `readyAt`, `pickedUpAt`, `cancelledAt`; "received" is `createdAt`) in the same conditional `updateMany`, which drives the customer's timeline. `PATCH /api/orders/:id/eta` (`{ minutes }`, 1–120) is the pizzaiolo's "prête dans N min" button: it sets `etaSetAt = now` and `estimatedReadyAt = now + N`, conditionally on the order still being `PENDING`/`CONFIRMED`/`PREPARING`, and the tracking page draws a countdown ring from `etaSetAt` to `estimatedReadyAt`. `GET /api/orders/:id` is readable by anyone holding the order link, so it only exposes `client.name`. The staff routes (`GET /api/orders`, `PATCH .../status`, `PATCH .../eta`) have no staff authentication yet.
+
 Order API responses select only `{ name, email, phone }` from `client` — never `include: { client: true }`, which would leak `passwordHash`.
 
 ### Time-slot auto-generation (`backend/src/lib/timeSlots.ts`)

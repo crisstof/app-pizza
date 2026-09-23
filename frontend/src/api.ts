@@ -48,9 +48,16 @@ export type Order = {
   discountCents: number;
   pointsEarned: number;
   createdAt: string;
+  confirmedAt: string | null;
+  preparingAt: string | null;
+  readyAt: string | null;
+  pickedUpAt: string | null;
+  cancelledAt: string | null;
+  etaSetAt: string | null;
+  estimatedReadyAt: string | null;
   client: { name: string; email: string; phone: string | null };
   timeSlot: TimeSlot;
-  items: { id: string; quantity: number; pizza: Pizza }[];
+  items: { id: string; quantity: number; unitPriceCents: number; pizza: Pizza }[];
 };
 
 export type AuthClient = { name: string; email: string; loyaltyPoints: number };
@@ -112,6 +119,14 @@ export function updateOrderStatus(orderId: string, status: OrderStatus): Promise
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
+  });
+}
+
+export function updateOrderEta(orderId: string, minutes: number): Promise<Order> {
+  return api(`/api/orders/${orderId}/eta`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ minutes }),
   });
 }
 
