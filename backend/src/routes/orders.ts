@@ -27,6 +27,27 @@ const ALLOWED_TRANSITIONS: Record<string, readonly string[]> = {
   CANCELLED: [],
 };
 
+// Which timestamp column records reaching each status (PENDING = createdAt).
+const STATUS_TIMESTAMP = {
+  CONFIRMED: "confirmedAt",
+  PREPARING: "preparingAt",
+  READY: "readyAt",
+  PICKED_UP: "pickedUpAt",
+  CANCELLED: "cancelledAt",
+} as const;
+
+// The pizzaiolo can only give or change a "ready in N minutes" estimate
+// while the order is still in the kitchen.
+const ETA_EDITABLE_STATUSES = ["PENDING", "CONFIRMED", "PREPARING"] as const;
+const MAX_ETA_MINUTES = 120;
+
+// Dashboard-shaped order: never `client: true`, which would leak passwordHash.
+const DASHBOARD_ORDER_INCLUDE = {
+  items: { include: { pizza: true } },
+  timeSlot: true,
+  client: { select: { name: true, email: true, phone: true } },
+} as const;
+
 const createOrderSchema = z.object({
   clientName: z.string().min(1).optional(),
   clientEmail: z.string().email().optional(),
@@ -175,7 +196,14 @@ ordersRouter.get("/mine", requireAuth, async (req, res) => {
 ordersRouter.get("/:id", async (req, res) => {
   const order = await prisma.order.findUnique({
     where: { id: req.params.id },
-    include: { items: { include: { pizza: true } }, timeSlot: true, payment: true },
+    include: {
+      items: { include: { pizza: true } },
+      timeSlot: true,
+      payment: true,
+      // Just the first name greeting on the tracking page; anyone with the
+      // link can read this route, so no email or phone here.
+      client: { select: { name: true } },
+    },
   });
   if (!order) return res.status(404).json({ error: "Commande introuvable." });
   res.json(order);
@@ -207,11 +235,7 @@ ordersRouter.get("/", async (req, res) => {
 
   const orders = await prisma.order.findMany({
     where: { timeSlot: { startsAt: { gte: startOfDay, lt: endOfDay } } },
-    include: {
-      client: { select: { name: true, email: true, phone: true } },
-      items: { include: { pizza: true } },
-      timeSlot: true,
-    },
+    include: DASHBOARD_ORDER_INCLUDE,
     orderBy: { timeSlot: { startsAt: "asc" } },
   });
 
@@ -243,9 +267,13 @@ ordersRouter.patch("/:id/status", async (req, res) => {
       // Conditional on the status we just checked, so a concurrent request
       // that already moved the order elsewhere loses the race instead of
       // silently overwriting it (same pattern as the booking transaction).
+      const nextStatus = parsed.data.status;
       const result = await tx.order.updateMany({
         where: { id: req.params.id, status: order.status },
-        data: { status: parsed.data.status },
+        data: {
+          status: nextStatus,
+          ...(nextStatus !== "PENDING" && { [STATUS_TIMESTAMP[nextStatus]]: new Date() }),
+        },
       });
       if (result.count === 0) throw new Error("STALE_STATUS");
 
@@ -267,12 +295,42 @@ ordersRouter.patch("/:id/status", async (req, res) => {
 
   const updated = await prisma.order.findUniqueOrThrow({
     where: { id: req.params.id },
-    include: {
-      items: { include: { pizza: true } },
-      timeSlot: true,
-      client: { select: { name: true, email: true, phone: true } },
+    include: DASHBOARD_ORDER_INCLUDE,
+  });
+
+  res.json(updated);
+});
+
+const updateEtaSchema = z.object({
+  minutes: z.number().int().min(1).max(MAX_ETA_MINUTES),
+});
+
+// Pizzaiolo sets "ready in N minutes" from now; the tracking page counts down.
+ordersRouter.patch("/:id/eta", async (req, res) => {
+  const parsed = updateEtaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+
+  const now = new Date();
+  // Conditional on the status at write time, so an estimate can't land on an
+  // order that was marked ready or cancelled in the meantime.
+  const result = await prisma.order.updateMany({
+    where: { id: req.params.id, status: { in: [...ETA_EDITABLE_STATUSES] } },
+    data: {
+      etaSetAt: now,
+      estimatedReadyAt: new Date(now.getTime() + parsed.data.minutes * 60_000),
     },
   });
+
+  const updated = await prisma.order.findUnique({
+    where: { id: req.params.id },
+    include: DASHBOARD_ORDER_INCLUDE,
+  });
+  if (!updated) return res.status(404).json({ error: "Commande introuvable." });
+  if (result.count === 0) {
+    return res.status(409).json({ error: "Cette commande n'est plus en cuisine." });
+  }
 
   res.json(updated);
 });

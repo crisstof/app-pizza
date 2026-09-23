@@ -9,6 +9,7 @@ import {
   Pizza as PizzaIcon,
   ReceiptText,
   RefreshCw,
+  Timer,
   WifiOff,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 import {
   fetchOrders,
   fetchTimeSlots,
+  updateOrderEta,
   updateOrderStatus,
   type Order,
   type OrderStatus,
@@ -25,10 +27,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatPrice, formatTime } from "@/lib/format";
+import { minutesUntil, useNow } from "@/lib/useNow";
 
 const AUTO_REFRESH_MS = 30_000;
 const SOON_WINDOW_MS = 60 * 60 * 1000;
 const TO_PREPARE: OrderStatus[] = ["PENDING", "CONFIRMED", "PREPARING"];
+const ETA_CHOICES = [5, 10, 15, 20, 30];
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 
@@ -128,35 +132,86 @@ function KitchenPanel({ prep }: { prep: PrepSlot[] }) {
   );
 }
 
+function EtaStatus({ order, now }: { order: Order; now: number }) {
+  if (!order.estimatedReadyAt) {
+    return <span className="text-muted-foreground">Pas encore d'estimation envoyée au client</span>;
+  }
+  const minutes = minutesUntil(order.estimatedReadyAt, now);
+  return (
+    <span className="flex flex-wrap items-center gap-x-1.5">
+      <Timer className="size-3.5 text-primary" aria-hidden />
+      Annoncée prête à <strong className="tabular-nums">{formatTime(order.estimatedReadyAt)}</strong>
+      {minutes > 0 ? (
+        <span className="text-muted-foreground">· dans {minutes} min</span>
+      ) : minutes === 0 ? (
+        <span className="font-semibold">· maintenant</span>
+      ) : (
+        <span className="font-semibold text-accent">· en retard de {-minutes} min</span>
+      )}
+    </span>
+  );
+}
+
 function OrderRow({
   order,
+  now,
   onAdvance,
+  onEta,
 }: {
   order: Order;
+  now: number;
   onAdvance: (order: Order, status: OrderStatus) => void;
+  onEta: (order: Order, minutes: number) => void;
 }) {
   const config = STATUS_CONFIG[order.status];
   const done = order.status === "PICKED_UP" || order.status === "CANCELLED";
+  const inKitchen = TO_PREPARE.includes(order.status);
 
   return (
     <motion.li layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-      <Card
-        className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${done ? "opacity-60" : ""}`}
-      >
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold">{order.client.name}</span>
-            <Badge variant={config.variant}>{config.label}</Badge>
+      <Card className={`gap-3 p-4 ${done ? "opacity-60" : ""}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold">{order.client.name}</span>
+              <Badge variant={config.variant}>{config.label}</Badge>
+            </div>
+            <p className="text-sm">{order.items.map((i) => `${i.quantity}× ${i.pizza.name}`).join(", ")}</p>
+            <p className="text-xs text-muted-foreground">
+              {formatPrice(order.totalCents)} · Réf {order.id.slice(0, 8)}
+            </p>
           </div>
-          <p className="text-sm">{order.items.map((i) => `${i.quantity}× ${i.pizza.name}`).join(", ")}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatPrice(order.totalCents)} · Réf {order.id.slice(0, 8)}
-          </p>
+          {config.next && (
+            <Button size="sm" className="shrink-0" onClick={() => onAdvance(order, config.next!.status)}>
+              {config.next.label}
+            </Button>
+          )}
         </div>
-        {config.next && (
-          <Button size="sm" className="shrink-0" onClick={() => onAdvance(order, config.next!.status)}>
-            {config.next.label}
-          </Button>
+
+        {inKitchen && (
+          <div className="flex flex-col gap-2 border-t pt-3 text-xs">
+            <EtaStatus order={order} now={now} />
+            <div
+              className="flex flex-wrap items-center gap-1.5"
+              role="group"
+              aria-label={`Délai annoncé à ${order.client.name}`}
+            >
+              <span className="mr-1 whitespace-nowrap text-muted-foreground">Prête dans</span>
+              {ETA_CHOICES.map((minutes) => (
+                <Button
+                  key={minutes}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 min-w-11 px-2 tabular-nums"
+                  aria-label={`Prête dans ${minutes} minutes`}
+                  onClick={() => onEta(order, minutes)}
+                >
+                  {minutes}′
+                </Button>
+              ))}
+            </div>
+          </div>
         )}
       </Card>
     </motion.li>
@@ -220,8 +275,20 @@ export default function PizzaioloDashboard() {
     }
   }
 
+  async function handleEta(order: Order, minutes: number) {
+    try {
+      const updated = await updateOrderEta(order.id, minutes);
+      generation.current++;
+      setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+      toast.success(`${order.client.name} · prête dans ${minutes} min`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur inconnue.");
+    }
+  }
+
+  const now = useNow(15_000);
+
   const stats = useMemo(() => {
-    const now = Date.now();
     const active = orders.filter((o) => o.status !== "CANCELLED");
     const toPrepare = orders.filter((o) => TO_PREPARE.includes(o.status));
     const pizzaCount = (list: Order[]) =>
@@ -238,7 +305,7 @@ export default function PizzaioloDashboard() {
       revenueCents,
       averageCents: active.length ? Math.round(revenueCents / active.length) : 0,
     };
-  }, [orders]);
+  }, [orders, now]);
 
   const nextSlot = upcomingSlots[0];
   const nextSlotFull = nextSlot ? nextSlot.reserved >= nextSlot.capacity : false;
@@ -367,7 +434,13 @@ export default function PizzaioloDashboard() {
                     </h3>
                     <ul className="space-y-2">
                       {slotOrders.map((order) => (
-                        <OrderRow key={order.id} order={order} onAdvance={handleAdvance} />
+                        <OrderRow
+                          key={order.id}
+                          order={order}
+                          now={now}
+                          onAdvance={handleAdvance}
+                          onEta={handleEta}
+                        />
                       ))}
                     </ul>
                   </div>

@@ -77,6 +77,18 @@ model Order {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
+  // When each status was reached (null = not yet), for the customer timeline.
+  confirmedAt DateTime?
+  preparingAt DateTime?
+  readyAt     DateTime?
+  pickedUpAt  DateTime?
+  cancelledAt DateTime?
+
+  // Pizzaiolo's "ready in N minutes" estimate: etaSetAt is when it was given,
+  // so the tracking page can draw progress from etaSetAt to estimatedReadyAt.
+  etaSetAt         DateTime?
+  estimatedReadyAt DateTime?
+
   items   OrderItem[]
   payment Payment?
 }
