@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { Timer, X } from "lucide-react";
+import { Printer, Timer, X } from "lucide-react";
+import { toast } from "sonner";
 import type { Order } from "@/api";
 import {
   AlertDialog,
@@ -16,9 +17,28 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatPrice, formatTime } from "@/lib/format";
+import { printTicket } from "@/lib/printTicket";
 import { minutesUntil } from "@/lib/useNow";
 import { ETA_CHOICES, STATUS_CONFIG, TO_PREPARE } from "./orderStatus";
 import type { OrderActions } from "./useOrderActions";
+
+/** Kitchen ticket, only when staff ask for it. */
+export function PrintTicketButton({ order, label }: { order: Order; label?: boolean }) {
+  return (
+    <Button
+      size={label ? "default" : "icon"}
+      variant={label ? "outline" : "ghost"}
+      className={label ? "" : "size-8"}
+      aria-label={label ? undefined : `Imprimer le ticket de ${order.client.name}`}
+      title="Imprimer le ticket"
+      onClick={() => {
+        if (!printTicket(order)) toast.error("Fenêtre d'impression bloquée : autorise les pop-ups pour ce site.");
+      }}
+    >
+      <Printer className="size-4" aria-hidden /> {label && "Imprimer le ticket"}
+    </Button>
+  );
+}
 
 export function CancelOrderButton({ order, onConfirm }: { order: Order; onConfirm: () => void }) {
   return (
@@ -113,6 +133,7 @@ export function OrderRow({
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-1">
+            <PrintTicketButton order={order} />
             {inKitchen && <CancelOrderButton order={order} onConfirm={() => actions.advance(order, "CANCELLED")} />}
             {config.next && (
               <Button size="sm" onClick={() => actions.advance(order, config.next!.status)}>

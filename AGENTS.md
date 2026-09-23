@@ -107,6 +107,14 @@ Staff prepare dough the day before, so `/pizzaiolo/pates` forecasts dough balls 
 
 `DoughLog` (`@@id([date, service])`, local `YYYY-MM-DD`) is the end-of-service count entered by staff: `prepared` / `wasted` (`wasted ≤ prepared`, no future dates); "sold" always comes from the orders. `demo = true` rows come from `prisma/demo-history.ts`, whose `--clean` removes only @demo.local clients' orders, demo logs and past slots left with no order.
 
+### Live orders, stats and tickets (`backend/src/lib/events.ts`, `backend/src/routes/admin/{events,stats}.ts`)
+
+`GET /api/admin/events` is a Server-Sent Events stream (staff only): `orders.ts` calls `emitOrderEvent` after an order is created, changes status or gets an ETA, and the Service page (`useLiveOrders`) reloads at once, plays a Web Audio chime (`lib/chime.ts`, needs a click to unlock — the "Son" toggle, remembered in localStorage) and counts new orders in the tab title. The 30-second polling stays as a fallback. The event bus is in-process: with several backend instances it would need Redis pub/sub or Postgres LISTEN/NOTIFY. Behind nginx, the stream sends `X-Accel-Buffering: no`.
+
+`GET /api/admin/stats?days=7|28|84` aggregates non-cancelled orders up to now (per day, or per Monday-started week for 84 days) with the previous period for trends, top 10 pizzas and a weekday × slot-time heatmap. Kitchen tickets are printed only on demand (`lib/printTicket.ts`, 80 mm layout in a popup, values HTML-escaped).
+
+`GET /api/auth/me` answers `null` and `GET /api/staff/me` `{ staff: false }` when logged out (200, not 401), since every page asks on load.
+
 ## Environment
 
 - `backend/.env` — `DATABASE_URL` (Postgres connection string matching `docker-compose.yml` credentials), `PORT` (default 4000), `JWT_SECRET` (any long random string), `FRONTEND_URL` (default `http://localhost:5173`, used for CORS), `STAFF_PASSWORD` (back-office password; without it the staff login answers 503), `TRUST_PROXY` (optional, proxy hop count when behind nginx/Traefik)

@@ -75,7 +75,7 @@ export type AdminClientDetail = Omit<AdminClient, "orderCount" | "spentCents"> &
 // Session
 export const staffLogin = (password: string) => api<{ ok: true }>("/api/staff/login", jsonBody("POST", { password }));
 export const staffLogout = () => api<void>("/api/staff/logout", { method: "POST" });
-export const fetchStaffSession = () => api<{ ok: true }>("/api/staff/me");
+export const fetchStaffSession = () => api<{ staff: boolean }>("/api/staff/me");
 
 // Menu
 export const fetchAdminPizzas = () => api<AdminPizza[]>("/api/admin/pizzas");
@@ -109,6 +109,26 @@ export const fetchDoughForecast = () => api<DayForecast[]>("/api/admin/dough/for
 export const fetchDoughLogs = (days = 28) => api<DoughLogs>(`/api/admin/dough/logs?days=${days}`);
 export const saveDoughLog = (date: string, service: DoughService, entry: { prepared: number; wasted: number }) =>
   api<unknown>(`/api/admin/dough/logs/${date}/${service}`, jsonBody("PUT", entry));
+
+// Statistics
+export type StatsSummary = {
+  revenueCents: number;
+  orders: number;
+  pizzas: number;
+  averageBasketCents: number;
+  cancelRate: number;
+  clients: number;
+};
+export type Stats = {
+  days: number;
+  granularity: "day" | "week";
+  summary: StatsSummary;
+  previousSummary: StatsSummary;
+  series: { start: string; revenueCents: number; orders: number; pizzas: number }[];
+  topPizzas: { name: string; quantity: number; revenueCents: number }[];
+  heatmap: { weekday: number; minutes: number; pizzas: number }[];
+};
+export const fetchStats = (days: number) => api<Stats>(`/api/admin/stats?days=${days}`);
 
 // Orders and clients
 export const searchOrders = (q: string) => api<Order[]>(`/api/admin/orders?q=${encodeURIComponent(q)}`);

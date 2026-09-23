@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatDayLong, formatPrice, formatTime } from "@/lib/format";
-import { CancelOrderButton } from "./OrderRow";
+import { CancelOrderButton, PrintTicketButton } from "./OrderRow";
 import type { OrderActions } from "./useOrderActions";
 import { STATUS_CONFIG, TO_PREPARE } from "./orderStatus";
 
@@ -119,16 +119,15 @@ export function OrderDetailDialog({
           )}
         </section>
 
-        {(config.next || TO_PREPARE.includes(order.status)) && (
-          <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
-            {TO_PREPARE.includes(order.status) && (
-              <CancelOrderButton order={order} onConfirm={() => actions.advance(order, "CANCELLED")} />
-            )}
-            {config.next && (
-              <Button onClick={() => actions.advance(order, config.next!.status)}>{config.next.label}</Button>
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
+          <PrintTicketButton order={order} label />
+          {TO_PREPARE.includes(order.status) && (
+            <CancelOrderButton order={order} onConfirm={() => actions.advance(order, "CANCELLED")} />
+          )}
+          {config.next && (
+            <Button onClick={() => actions.advance(order, config.next!.status)}>{config.next.label}</Button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

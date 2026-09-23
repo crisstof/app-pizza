@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { clearSessionCookie, hashPassword, requireAuth, setSessionCookie, verifyPassword } from "../lib/auth.js";
+import { attachClientIfPresent, clearSessionCookie, hashPassword, setSessionCookie, verifyPassword } from "../lib/auth.js";
 import { createFailureLimiter } from "../lib/rateLimit.js";
 
 export const authRouter = Router();
@@ -74,8 +74,9 @@ authRouter.post("/logout", (_req, res) => {
   res.status(204).end();
 });
 
-authRouter.get("/me", requireAuth, async (req, res) => {
-  const client = await prisma.client.findUnique({ where: { id: req.clientId! } });
-  if (!client) return res.status(401).json({ error: "Non authentifié." });
-  res.json({ name: client.name, email: client.email, loyaltyPoints: client.loyaltyPoints });
+// "Who am I": null when logged out. A 200 either way, since every page asks
+// on load and a logged-out visitor is not an error.
+authRouter.get("/me", attachClientIfPresent, async (req, res) => {
+  const client = req.clientId ? await prisma.client.findUnique({ where: { id: req.clientId } }) : null;
+  res.json(client ? { name: client.name, email: client.email, loyaltyPoints: client.loyaltyPoints } : null);
 });
