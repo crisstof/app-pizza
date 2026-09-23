@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { asyncRoute, HttpError } from "../../lib/asyncRoute.js";
+import { HttpError } from "../../lib/errors.js";
 import { prisma } from "../../prisma.js";
 
 export const adminClientsRouter = Router();
@@ -22,7 +22,7 @@ function withoutHash<T extends { passwordHash: string | null }>({ passwordHash, 
 
 adminClientsRouter.get(
   "/",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const clients = await prisma.client.findMany({
       where: q
@@ -54,12 +54,12 @@ adminClientsRouter.get(
         spentCents: spentById.get(client.id) ?? 0,
       }))
     );
-  })
+  }
 );
 
 adminClientsRouter.get(
   "/:id",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const client = await prisma.client.findUnique({
       where: { id: req.params.id },
       select: {
@@ -72,7 +72,7 @@ adminClientsRouter.get(
     });
     if (!client) throw new HttpError(404, "Client introuvable.");
     res.json(withoutHash(client));
-  })
+  }
 );
 
 const loyaltySchema = z.object({
@@ -87,7 +87,7 @@ const loyaltySchema = z.object({
 // Manual stamp adjustment (goodwill gesture, correction).
 adminClientsRouter.patch(
   "/:id/loyalty",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const parsed = loyaltySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const { delta } = parsed.data;
@@ -104,5 +104,5 @@ adminClientsRouter.patch(
       throw new HttpError(409, `Ce client n'a que ${client.loyaltyPoints} tampon${client.loyaltyPoints > 1 ? "s" : ""}.`);
     }
     res.json(withoutHash(client));
-  })
+  }
 );

@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { createFailureLimiter } from "./rateLimit.js";
 
 // Single shared staff password (backend/.env). Kept separate from customer
 // accounts: its own cookie and a `role: "staff"` claim, so a customer
@@ -36,28 +37,11 @@ export function checkStaffPassword(candidate: string) {
   return timingSafeEqual(sha256(candidate), sha256(expected));
 }
 
-// In-memory brute-force guard: MAX_FAILURES wrong passwords per IP per window.
-const failures = new Map<string, { count: number; resetAt: number }>();
-
-export function isLockedOut(ip: string) {
-  const entry = failures.get(ip);
-  if (!entry || entry.resetAt < Date.now()) return false;
-  return entry.count >= MAX_FAILURES;
-}
-
-export function recordFailure(ip: string) {
-  const now = Date.now();
-  const entry = failures.get(ip);
-  if (!entry || entry.resetAt < now) {
-    failures.set(ip, { count: 1, resetAt: now + FAILURE_WINDOW_MS });
-  } else {
-    entry.count++;
-  }
-}
-
-export function clearFailures(ip: string) {
-  failures.delete(ip);
-}
+// Brute-force guard: MAX_FAILURES wrong passwords per IP per window.
+const limiter = createFailureLimiter({ max: MAX_FAILURES, windowMs: FAILURE_WINDOW_MS });
+export const isLockedOut = limiter.isLockedOut;
+export const recordFailure = limiter.recordFailure;
+export const clearFailures = limiter.clear;
 
 export function setStaffCookie(res: Response) {
   const token = jwt.sign({ role: "staff", pwv: passwordVersion() }, jwtSecret(), {

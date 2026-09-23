@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { z } from "zod";
 import { attachClientIfPresent, requireAuth } from "../lib/auth.js";
 import { requireStaff } from "../lib/staffAuth.js";
@@ -261,7 +261,7 @@ const updateStatusSchema = z.object({
   status: z.enum(ORDER_STATUSES),
 });
 
-ordersRouter.patch("/:id/status", requireStaff, async (req, res) => {
+ordersRouter.patch("/:id/status", requireStaff, async (req: Request<{ id: string }>, res) => {
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
@@ -329,7 +329,7 @@ const updateEtaSchema = z.object({
 });
 
 // Pizzaiolo sets "ready in N minutes" from now; the tracking page counts down.
-ordersRouter.patch("/:id/eta", requireStaff, async (req, res) => {
+ordersRouter.patch("/:id/eta", requireStaff, async (req: Request<{ id: string }>, res) => {
   const parsed = updateEtaSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });

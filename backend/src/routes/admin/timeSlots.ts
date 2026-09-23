@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { asyncRoute, HttpError } from "../../lib/asyncRoute.js";
+import { HttpError } from "../../lib/errors.js";
 import { getSettings, localDateKey, parseLocalDate, SLOT_DURATION_MINUTES } from "../../lib/settings.js";
 import { syncUpcomingTimeSlots } from "../../lib/timeSlots.js";
 import { prisma } from "../../prisma.js";
@@ -35,14 +35,14 @@ const settingsSchema = z
 
 adminTimeSlotsRouter.get(
   "/settings",
-  asyncRoute(async (_req, res) => {
+  async (_req, res) => {
     res.json(await getSettings());
-  })
+  }
 );
 
 adminTimeSlotsRouter.put(
   "/settings",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const parsed = settingsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const data = { ...parsed.data, closedWeekdays: [...new Set(parsed.data.closedWeekdays)].sort() };
@@ -53,13 +53,13 @@ adminTimeSlotsRouter.put(
       previous.slotCapacity !== settings.slotCapacity ? settings.slotCapacity : undefined
     );
     res.json(settings);
-  })
+  }
 );
 
 // Every slot of one day for staff, including closed and full ones.
 adminTimeSlotsRouter.get(
   "/time-slots",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const day = typeof req.query.date === "string" ? parseLocalDate(req.query.date) : null;
     if (!day) throw new HttpError(400, "Paramètre 'date' invalide (attendu AAAA-MM-JJ).");
     const next = new Date(day);
@@ -70,7 +70,7 @@ adminTimeSlotsRouter.get(
       orderBy: { startsAt: "asc" },
     });
     res.json(slots.map((slot) => ({ ...slot, available: slot.capacity - slot.reserved })));
-  })
+  }
 );
 
 const slotPatchSchema = z.object({
@@ -80,7 +80,7 @@ const slotPatchSchema = z.object({
 
 adminTimeSlotsRouter.patch(
   "/time-slots/:id",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const parsed = slotPatchSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const { capacity, closed } = parsed.data;
@@ -98,18 +98,18 @@ adminTimeSlotsRouter.patch(
       throw new HttpError(409, `Ce créneau a déjà ${slot.reserved} commande${slot.reserved > 1 ? "s" : ""}.`);
     }
     res.json({ ...slot, available: slot.capacity - slot.reserved });
-  })
+  }
 );
 
 adminTimeSlotsRouter.get(
   "/closed-days",
-  asyncRoute(async (_req, res) => {
+  async (_req, res) => {
     const days = await prisma.closedDay.findMany({
       where: { date: { gte: localDateKey(new Date()) } },
       orderBy: { date: "asc" },
     });
     res.json(days);
-  })
+  }
 );
 
 const closedDaySchema = z.object({
@@ -119,7 +119,7 @@ const closedDaySchema = z.object({
 
 adminTimeSlotsRouter.post(
   "/closed-days",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const parsed = closedDaySchema.safeParse(req.body);
     const day = parsed.success ? parseLocalDate(parsed.data.date) : null;
     if (!parsed.success || !day) throw new HttpError(400, "Date invalide.");
@@ -134,16 +134,16 @@ adminTimeSlotsRouter.post(
     // Removes that day's empty slots and closes the ones that have orders.
     await syncUpcomingTimeSlots();
     res.status(201).json(closedDay);
-  })
+  }
 );
 
 adminTimeSlotsRouter.delete(
   "/closed-days/:date",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     await prisma.closedDay.deleteMany({ where: { date: req.params.date } });
     // Recreates the day's slots (ones kept closed because of orders stay
     // closed; staff can reopen them from the day view).
     await syncUpcomingTimeSlots();
     res.status(204).end();
-  })
+  }
 );

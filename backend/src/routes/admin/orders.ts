@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { asyncRoute } from "../../lib/asyncRoute.js";
 import { prisma } from "../../prisma.js";
 import { DASHBOARD_ORDER_INCLUDE } from "../orders.js";
 
@@ -9,7 +8,7 @@ export const adminOrdersRouter = Router();
 // (the first characters of the id, as shown on tickets).
 adminOrdersRouter.get(
   "/",
-  asyncRoute(async (req, res) => {
+  async (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     if (q.length < 2) return res.json([]);
 
@@ -27,5 +26,5 @@ adminOrdersRouter.get(
       take: 50,
     });
     res.json(orders);
-  })
+  }
 );

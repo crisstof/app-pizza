@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { asyncRoute } from "../lib/asyncRoute.js";
 import { prisma } from "../prisma.js";
 
 export const pizzasRouter = Router();
@@ -8,11 +7,11 @@ export const pizzasRouter = Router();
 // archived ones are not.
 pizzasRouter.get(
   "/",
-  asyncRoute(async (_req, res) => {
+  async (_req, res) => {
     const pizzas = await prisma.pizza.findMany({
       where: { archivedAt: null },
       orderBy: [{ category: "asc" }, { name: "asc" }],
     });
     res.json(pizzas);
-  })
+  }
 );

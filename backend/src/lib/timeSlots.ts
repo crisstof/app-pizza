@@ -55,7 +55,8 @@ export async function ensureUpcomingTimeSlots(): Promise<void> {
  * - missing expected slots are created;
  * - `newCapacity`, when given, is applied to every future slot but never
  *   below what's already reserved.
- * Called from staff request handlers (wrapped in asyncRoute), so it may throw.
+ * Called from staff request handlers (Express 5 forwards a rejection to the
+ * error handler), so it may throw.
  */
 export async function syncUpcomingTimeSlots(newCapacity?: number): Promise<void> {
   const now = new Date();
@@ -92,9 +93,9 @@ let lastRefresh = 0;
 /**
  * Throttled, failure-safe wrapper around `ensureUpcomingTimeSlots`: at most
  * once per hour, and never rejects (a transient DB error is logged and
- * swallowed rather than propagated — this runs on both server startup and
- * inside a hot request path, and Express 4 doesn't catch rejections thrown
- * from async handlers, so an uncaught one would crash the whole process).
+ * swallowed rather than propagated — it runs un-awaited at server startup,
+ * where a rejection would be unhandled, and inside the customers' slot list,
+ * which should still answer with the slots that already exist).
  * The single shared timestamp means the startup call and the lazy
  * request-time check don't duplicate each other's work.
  */
