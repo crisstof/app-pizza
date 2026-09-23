@@ -1,5 +1,12 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
+/** Photos uploaded from the back-office are served by the backend (/uploads/…);
+ * the starter menu's /images/… are static files of this frontend. */
+export function resolveImageUrl(url: string | null): string | null {
+  if (!url) return null;
+  return url.startsWith("/uploads/") ? `${API_URL}${url}` : url;
+}
+
 export type Pizza = {
   id: string;
   name: string;
@@ -21,6 +28,19 @@ export type TimeSlot = {
   capacity: number;
   reserved: number;
   available: number;
+  closed: boolean;
+};
+
+/** Opening hours, times in minutes since midnight (660 = 11:00). */
+export type ShopHours = {
+  lunchOpen: boolean;
+  lunchStart: number;
+  lunchEnd: number;
+  dinnerOpen: boolean;
+  dinnerStart: number;
+  dinnerEnd: number;
+  closedWeekdays: number[];
+  daysAhead: number;
 };
 
 export type OrderItemInput = { pizzaId: string; quantity: number };
@@ -68,25 +88,44 @@ function extractErrorMessage(data: unknown): string {
   if (typeof data === "object" && data !== null && "error" in data) {
     const error = (data as { error: unknown }).error;
     if (typeof error === "string") return error;
+    // Zod's flatten(): field errors first, then object-level (refine) errors.
     if (typeof error === "object" && error !== null && "fieldErrors" in error) {
-      const fieldErrors = (error as { fieldErrors: Record<string, string[]> }).fieldErrors;
-      const firstMessage = Object.values(fieldErrors).flat()[0];
+      const { fieldErrors, formErrors } = error as { fieldErrors: Record<string, string[]>; formErrors?: string[] };
+      const firstMessage = Object.values(fieldErrors).flat()[0] ?? formErrors?.[0];
       if (firstMessage) return firstMessage;
     }
   }
-  return "Erreur lors de la commande.";
+  return "Une erreur est survenue.";
 }
 
-async function api<T>(path: string, options?: RequestInit): Promise<T> {
+/** A failed API call, keeping the HTTP status (e.g. 401 → back to login). */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { credentials: "include", ...options });
   if (res.status === 204) return undefined as T;
-  const data = await res.json();
-  if (!res.ok) throw new Error(extractErrorMessage(data));
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(extractErrorMessage(data), res.status);
   return data;
+}
+
+/** JSON body helper for POST/PUT/PATCH calls. */
+export function jsonBody(method: string, body: unknown): RequestInit {
+  return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
 
 export function fetchPizzas(): Promise<Pizza[]> {
   return api("/api/pizzas");
+}
+
+export function fetchShopHours(): Promise<ShopHours> {
+  return api("/api/settings");
 }
 
 export function fetchTimeSlots(): Promise<TimeSlot[]> {

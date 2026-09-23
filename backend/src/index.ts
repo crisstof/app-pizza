@@ -3,8 +3,17 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { authRouter } from "./routes/auth.js";
+import { errorHandler } from "./lib/asyncRoute.js";
+import { requireStaff, staffPasswordConfigured } from "./lib/staffAuth.js";
 import { refreshUpcomingTimeSlots } from "./lib/timeSlots.js";
+import { UPLOADS_DIR } from "./lib/uploads.js";
+import { adminClientsRouter } from "./routes/admin/clients.js";
+import { adminOrdersRouter } from "./routes/admin/orders.js";
+import { adminPizzasRouter } from "./routes/admin/pizzas.js";
+import { adminTimeSlotsRouter } from "./routes/admin/timeSlots.js";
 import { pizzasRouter } from "./routes/pizzas.js";
+import { settingsRouter } from "./routes/settings.js";
+import { staffRouter } from "./routes/staff.js";
 import { timeSlotsRouter } from "./routes/timeSlots.js";
 import { ordersRouter } from "./routes/orders.js";
 
@@ -15,13 +24,30 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+// Uploaded pizza photos (backend/uploads, gitignored).
+app.use("/uploads", express.static(UPLOADS_DIR, { maxAge: "7d" }));
+
 app.use("/api/auth", authRouter);
 app.use("/api/pizzas", pizzasRouter);
+app.use("/api/settings", settingsRouter);
 app.use("/api/time-slots", timeSlotsRouter);
 app.use("/api/orders", ordersRouter);
+
+// Staff back-office: login is open, everything under /api/admin needs it.
+app.use("/api/staff", staffRouter);
+app.use("/api/admin", requireStaff);
+app.use("/api/admin/pizzas", adminPizzasRouter);
+app.use("/api/admin/orders", adminOrdersRouter);
+app.use("/api/admin/clients", adminClientsRouter);
+app.use("/api/admin", adminTimeSlotsRouter);
+
+app.use(errorHandler);
 
 const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 app.listen(port, () => {
   console.log(`Backend démarré sur http://localhost:${port}`);
+  if (!staffPasswordConfigured()) {
+    console.warn("STAFF_PASSWORD absent de backend/.env : l'espace pizzaiolo est inaccessible.");
+  }
   refreshUpcomingTimeSlots();
 });

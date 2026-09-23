@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Flame, Leaf, Minus, Pizza as PizzaIcon, Plus, Sparkles, Star, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Pizza, PizzaTag } from "@/api";
+import { resolveImageUrl, type Pizza, type PizzaTag } from "@/api";
 import { formatPrice } from "@/lib/format";
 
 const TAG_BADGES: Record<PizzaTag, { label: string; icon: LucideIcon; iconClass: string }> = {
@@ -22,23 +22,25 @@ export function PizzaCard({
   onChange: (delta: number) => void;
 }) {
   const selected = quantity > 0;
+  const soldOut = !pizza.available;
+  const image = resolveImageUrl(pizza.imageUrl);
 
   return (
     <motion.article
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className={`flex flex-col overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-md ${
-        selected ? "border-primary ring-2 ring-primary" : "border-border"
-      }`}
+      className={`flex flex-col overflow-hidden rounded-xl border bg-card transition-shadow ${
+        soldOut ? "opacity-70" : "hover:shadow-md"
+      } ${selected ? "border-primary ring-2 ring-primary" : "border-border"}`}
     >
       <div className="relative aspect-[4/3] bg-muted">
-        {pizza.imageUrl ? (
+        {image ? (
           <img
-            src={pizza.imageUrl}
+            src={image}
             alt={pizza.name}
             loading="lazy"
-            className="absolute inset-0 size-full object-cover"
+            className={`absolute inset-0 size-full object-cover ${soldOut ? "grayscale" : ""}`}
           />
         ) : (
           <div className="flex size-full items-center justify-center text-primary/60">
@@ -60,6 +62,11 @@ export function PizzaCard({
               );
             })}
           </ul>
+        )}
+        {soldOut && (
+          <span className="absolute inset-x-0 bottom-0 bg-foreground/80 py-1.5 text-center text-sm font-semibold text-background">
+            Victime de son succès : épuisée
+          </span>
         )}
         {selected && (
           <span className="absolute right-2 bottom-2 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
@@ -106,6 +113,8 @@ export function PizzaCard({
                 <Plus className="size-4" />
               </Button>
             </div>
+          ) : soldOut ? (
+            <span className="text-sm font-semibold text-muted-foreground">Épuisée</span>
           ) : (
             <Button type="button" size="sm" onClick={() => onChange(1)}>
               <Plus className="size-4" /> Ajouter

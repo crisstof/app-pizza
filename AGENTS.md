@@ -27,7 +27,7 @@ npm run start              # run compiled dist/index.js
 npm run prisma:migrate     # create + apply a migration from schema.prisma changes
 npm run prisma:generate    # regenerate Prisma Client after schema changes
 npm run prisma:studio      # GUI at localhost:5555 to inspect/edit data
-npx tsx prisma/seed.ts     # seed pizzas (only if none exist) + upcoming time slots
+npx tsx prisma/seed.ts     # create the starter pizzas that don't exist yet + upcoming time slots
 ```
 
 No test suite exists yet.
@@ -49,7 +49,7 @@ No test suite exists yet.
 
 `Client` → `Order` → `OrderItem` → `Pizza`, with `Order` → `TimeSlot` and `Order` → `Payment` (optional, not yet wired to a real payment provider). Money is stored as integer cents (`priceCents`, `totalCents`, `discountCents`) to avoid floating-point rounding — never switch these to float/decimal without updating every call site.
 
-`Pizza.name` is unique, and `backend/prisma/seed.ts` holds the whole menu (15 pizzas) and upserts it by name, so re-running the seed updates the menu instead of duplicating it — edit the menu there. `Pizza.category` (`TOMATO` | `CREAM` | `SPECIAL`) drives the menu filters and `Pizza.tags` (`vegetarian`, `spicy`, `popular`, `new`) the card badges. `Pizza.imageUrl` points at `frontend/public/images/` (Unsplash photos, sources in `CREDITS.md` there).
+`Pizza.name` is unique. The menu is edited from the staff back-office (`/pizzaiolo/carte`); `backend/prisma/seed.ts` only holds the 15-pizza starter menu and upserts it by name with `update: {}`, so re-running the seed creates missing pizzas but never overwrites staff edits. `Pizza.available = false` means "Épuisée" (shown greyed, can't be ordered); `Pizza.archivedAt` replaces deletion for pizzas that past orders reference (archived pizzas keep their name until a new pizza takes it). `Pizza.category` (`TOMATO` | `CREAM` | `SPECIAL`) drives the menu filters and `Pizza.tags` (`vegetarian`, `spicy`, `popular`, `new`) the card badges. `Pizza.imageUrl` is either `/images/…` (starter photos in `frontend/public/images/`, sources in `CREDITS.md` there) or `/uploads/pizzas/…` (photos uploaded from the back-office, stored in the gitignored `backend/uploads/` and served by the backend) — always render it through `resolveImageUrl()` from `api.ts`.
 
 `Client.passwordHash` is nullable: `null` means a guest-only client created by upsert-on-email during checkout, never logged in. `Client.loyaltyPoints` is the stamp balance (see Loyalty below).
 
@@ -71,19 +71,19 @@ Guest checkout (no session) upserts a `Client` by email — but **refuses** if t
 
 ### Live order tracking (`backend/src/routes/orders.ts`, `frontend/src/pages/OrderTracking.tsx`)
 
-Each status change also stamps its own column (`confirmedAt`, `preparingAt`, `readyAt`, `pickedUpAt`, `cancelledAt`; "received" is `createdAt`) in the same conditional `updateMany`, which drives the customer's timeline. `PATCH /api/orders/:id/eta` (`{ minutes }`, 1–120) is the pizzaiolo's "prête dans N min" button: it sets `etaSetAt = now` and `estimatedReadyAt = now + N`, conditionally on the order still being `PENDING`/`CONFIRMED`/`PREPARING`, and the tracking page draws a countdown ring from `etaSetAt` to `estimatedReadyAt`. `GET /api/orders/:id` is readable by anyone holding the order link, so it only exposes `client.name`. The staff routes (`GET /api/orders`, `PATCH .../status`, `PATCH .../eta`) have no staff authentication yet.
+Each status change also stamps its own column (`confirmedAt`, `preparingAt`, `readyAt`, `pickedUpAt`, `cancelledAt`; "received" is `createdAt`) in the same conditional `updateMany`, which drives the customer's timeline. `PATCH /api/orders/:id/eta` (`{ minutes }`, 1–120) is the pizzaiolo's "prête dans N min" button: it sets `etaSetAt = now` and `estimatedReadyAt = now + N`, conditionally on the order still being `PENDING`/`CONFIRMED`/`PREPARING`, and the tracking page draws a countdown ring from `etaSetAt` to `estimatedReadyAt`. `GET /api/orders/:id` is readable by anyone holding the order link, so it only exposes `client.name`. The staff routes (`GET /api/orders`, `PATCH .../status`, `PATCH .../eta`) require the staff session (see Staff back-office).
 
 Order API responses select only `{ name, email, phone }` from `client` — never `include: { client: true }`, which would leak `passwordHash`.
 
-### Time-slot auto-generation (`backend/src/lib/timeSlots.ts`)
+### Time-slot auto-generation (`backend/src/lib/timeSlots.ts`, `backend/src/lib/settings.ts`)
 
-`ensureUpcomingTimeSlots()` generates slots for fixed lunch (11:00–14:00) and dinner (18:00–22:00) windows, 30 minutes each, for a rolling 7-day horizon, using `createMany({ skipDuplicates: true })` against the unique `startsAt` constraint — safe to call repeatedly/concurrently. `refreshUpcomingTimeSlots()` wraps it with a once-per-hour throttle and a try/catch that logs instead of rejecting; it's called at server startup and lazily from `GET /api/time-slots`. **Don't call `ensureUpcomingTimeSlots()` directly from a request handler** — always go through the throttled wrapper, since Express 4 doesn't catch rejections thrown from async handlers and an uncaught one crashes the whole process (Node's default unhandled-rejection behavior).
+`ensureUpcomingTimeSlots()` generates 30-minute slots from the `ShopSettings` singleton row (lunch/dinner windows in minutes since midnight, capacity, `daysAhead` horizon, `closedWeekdays`), skipping `ClosedDay` dates, using `createMany({ skipDuplicates: true })` against the unique `startsAt` constraint — safe to call repeatedly/concurrently. `refreshUpcomingTimeSlots()` wraps it with a once-per-hour throttle and a try/catch that logs instead of rejecting; it's called at server startup and lazily from `GET /api/time-slots`. When staff change the settings or closures, `syncUpcomingTimeSlots()` reconciles existing future slots: stale ones are deleted if no order references them, otherwise set `closed` (hidden from customers, their orders stay valid); a new default capacity is applied with `GREATEST(capacity, reserved)`. `TimeSlot.closed` is also toggled per slot by staff; order creation refuses closed slots inside the booking transaction. **Don't call `ensureUpcomingTimeSlots()` directly from a request handler** — always go through the throttled wrapper, since Express 4 doesn't catch rejections thrown from async handlers and an uncaught one crashes the whole process (Node's default unhandled-rejection behavior).
 
 ### Frontend data flow
 
 `frontend/src/api.ts` is the only place that talks to the backend — a small `api<T>()` fetch wrapper (always sends `credentials: "include"` for the auth cookie) plus typed functions per endpoint. It normalizes backend error shapes (a plain string, or a Zod `fieldErrors` object) into a single readable message via `extractErrorMessage` — keep using that path rather than reading `err.message` directly, since a raw Zod error object stringifies to `[object Object]`.
 
-`frontend/src/context/AuthContext.tsx` exposes `useAuth()` (`client`, `login`, `register`, `logout`, `refresh`) and wraps the router in `App.tsx`. Routing is `react-router-dom`; pages live in `frontend/src/pages/`: `CustomerBooking` (`/`), `OrderTracking` (`/suivi/:orderId`), `PizzaioloDashboard` (`/pizzaiolo`), `SignUp`/`SignIn` (`/inscription`, `/connexion`), `Account` (`/compte`). Each page owns its own local state — there's no global state library.
+`frontend/src/context/AuthContext.tsx` exposes `useAuth()` (`client`, `login`, `register`, `logout`, `refresh`) and wraps the router in `App.tsx`. Routing is `react-router-dom`; pages live in `frontend/src/pages/`: `CustomerBooking` (`/`), `OrderTracking` (`/suivi/:orderId`), `SignUp`/`SignIn` (`/inscription`, `/connexion`), `Account` (`/compte`), and the staff back-office under `pages/staff/` (`/pizzaiolo/*`, see above). Each page owns its own local state — there's no global state library.
 
 ### UI components and theming
 
@@ -93,9 +93,15 @@ The `@/` import alias maps to `frontend/src/` (configured in both `vite.config.t
 
 Theme colors are CSS variables in `frontend/src/index.css`, stored as raw hex and consumed directly via `var(--...)` (not wrapped in `hsl()`), with a `@media (prefers-color-scheme: dark)` override block. The app carries **two** themes in the same stylesheet: the default `:root` theme (warm red/gold, Playfair Display SC + Karla) for customer-facing pages, and a `.theme-staff` class override (blue/orange, Plus Jakarta Sans) applied to the pizzaiolo dashboard's root element. A themed subtree must set its own `background`/`color` (not just redeclare the CSS variables) — descendants otherwise inherit the *computed* color from `body`, which resolved `var(--foreground)` before the override was in scope.
 
+### Staff back-office (`backend/src/lib/staffAuth.ts`, `backend/src/routes/admin/`, `frontend/src/pages/staff/`)
+
+A single shared password, `STAFF_PASSWORD`, protects the back-office. Login sets a separate `staff_session` cookie (JWT with `role: "staff"` and a fingerprint of the password, so changing the password logs everyone out; a customer `session` cookie never grants staff access), with a 5-failures-per-15-minutes lockout per IP. `requireStaff` guards `GET /api/orders` (day view), `PATCH /api/orders/:id/status|eta`, and everything under `/api/admin/*` (menu CRUD + photo upload via multer, settings, slots, closed days, order search, clients, manual loyalty adjustment — the latter conditional so a balance can't go negative). New routes use `asyncRoute()` + the JSON `errorHandler` from `lib/asyncRoute.ts` so a rejected promise returns a 500 instead of crashing Express 4. Cancelling an order also gives its place back to the slot (`reserved` decrement in the same transaction).
+
+On the frontend, `/pizzaiolo` is a nested-route layout (`StaffLayout` checks the session, redirects to `/pizzaiolo/connexion`): Service (live day + "Pilotage du service": today's slots and sold-out switches), Commandes, Carte, Créneaux, Clients. Back-office calls live in `frontend/src/staffApi.ts` (same `api()` helper, which throws `ApiError` with the HTTP status); shared pieces in `frontend/src/components/staff/`. Customer pages read opening hours from the public `GET /api/settings`.
+
 ## Environment
 
-- `backend/.env` — `DATABASE_URL` (Postgres connection string matching `docker-compose.yml` credentials), `PORT` (default 4000), `JWT_SECRET` (any long random string), `FRONTEND_URL` (default `http://localhost:5173`, used for CORS)
+- `backend/.env` — `DATABASE_URL` (Postgres connection string matching `docker-compose.yml` credentials), `PORT` (default 4000), `JWT_SECRET` (any long random string), `FRONTEND_URL` (default `http://localhost:5173`, used for CORS), `STAFF_PASSWORD` (back-office password; without it the staff login answers 503)
 - `frontend/.env` — `VITE_API_URL` (default `http://localhost:4000`)
 
 Both are gitignored; there's no `.env.example` yet, so check `docker-compose.yml` for the expected Postgres credentials, and generate a fresh `JWT_SECRET` (e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) when recreating `backend/.env`.

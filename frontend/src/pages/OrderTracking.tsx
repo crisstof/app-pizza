@@ -15,7 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
-import { fetchOrder, type Order, type OrderStatus } from "@/api";
+import { fetchOrder, resolveImageUrl, type Order, type OrderStatus } from "@/api";
 import { Card } from "@/components/ui/card";
 import { formatPrice, formatTime } from "@/lib/format";
 import { minutesUntil, useNow } from "@/lib/useNow";
@@ -246,7 +246,7 @@ function OrderDetails({ order }: { order: Order }) {
           <li key={item.id} className="flex items-center gap-3">
             <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-muted">
               {item.pizza.imageUrl ? (
-                <img src={item.pizza.imageUrl} alt="" className="absolute inset-0 size-full object-cover" />
+                <img src={resolveImageUrl(item.pizza.imageUrl)!} alt="" className="absolute inset-0 size-full object-cover" />
               ) : (
                 <PizzaIcon className="m-3 size-6 text-primary/60" aria-hidden />
               )}
