@@ -1,14 +1,21 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { attachClientIfPresent, clearSessionCookie, hashPassword, setSessionCookie, verifyPassword } from "../lib/auth.js";
+import {
+  attachClientIfPresent,
+  clearSessionCookie,
+  hashPassword,
+  normalizedEmail,
+  setSessionCookie,
+  verifyPasswordOrDummy,
+} from "../lib/auth.js";
 import { createFailureLimiter } from "../lib/rateLimit.js";
 
 export const authRouter = Router();
 
 const registerSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
+  email: normalizedEmail(),
   password: z.string().min(8),
 });
 
@@ -34,7 +41,7 @@ authRouter.post("/register", async (req, res) => {
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: normalizedEmail(),
   password: z.string().min(1),
 });
 
@@ -52,13 +59,15 @@ authRouter.post("/login", async (req, res) => {
   }
   const { email, password } = parsed.data;
   const ip = req.ip ?? "unknown";
-  const accountKey = `${ip}|${email.toLowerCase()}`;
+  const accountKey = `${ip}|${email}`;
   if (ipLimiter.isLockedOut(ip) || accountLimiter.isLockedOut(accountKey)) {
     return res.status(429).json({ error: "Trop d'essais. Réessaie dans 15 minutes." });
   }
 
   const client = await prisma.client.findUnique({ where: { email } });
-  if (!client?.passwordHash || !(await verifyPassword(password, client.passwordHash))) {
+  // Always pay the bcrypt cost, even for an unknown email (see verifyPasswordOrDummy).
+  const valid = await verifyPasswordOrDummy(password, client?.passwordHash);
+  if (!client || !valid) {
     ipLimiter.recordFailure(ip);
     accountLimiter.recordFailure(accountKey);
     return res.status(401).json({ error: "Email ou mot de passe incorrect." });

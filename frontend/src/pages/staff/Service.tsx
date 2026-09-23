@@ -41,6 +41,7 @@ import {
 } from "@/staffApi";
 
 const AUTO_REFRESH_MS = 30_000;
+type LoadScope = "all" | "orders";
 const SOUND_KEY = "staff-sound";
 const BASE_TITLE = "App Pizza";
 
@@ -193,29 +194,35 @@ export default function Service() {
   const generation = useRef(0);
   const inFlight = useRef(false);
   // A reload asked for while one is running (e.g. a live event) runs right
-  // after it, instead of being dropped.
-  const reloadPending = useRef(false);
-  const loadRef = useRef<() => void>(() => {});
+  // after it, instead of being dropped; "all" wins over "orders".
+  const reloadPending = useRef<LoadScope | null>(null);
+  const loadRef = useRef<(scope?: LoadScope) => void>(() => {});
 
-  const load = useCallback(async () => {
+  // "all": everything on the page (arrival, polling, manual refresh).
+  // "orders": just what an order event can change — the orders and today's
+  // slot fill — so live events don't refetch the menu and upcoming slots.
+  const load = useCallback(async (scope: LoadScope = "all") => {
     if (inFlight.current) {
-      reloadPending.current = true;
+      reloadPending.current = reloadPending.current === "all" || scope === "all" ? "all" : "orders";
       return;
     }
     inFlight.current = true;
     const myGeneration = ++generation.current;
     try {
-      const [o, s, today, p] = await Promise.all([
-        fetchOrders(),
-        fetchTimeSlots(),
-        fetchDaySlots(toDateKey(new Date())),
-        fetchAdminPizzas(),
-      ]);
-      if (myGeneration !== generation.current) return;
-      setOrders(o);
-      setUpcomingSlots(s);
-      setTodaySlots(today);
-      setPizzas(p);
+      const today = toDateKey(new Date());
+      if (scope === "orders") {
+        const [o, t] = await Promise.all([fetchOrders(), fetchDaySlots(today)]);
+        if (myGeneration !== generation.current) return;
+        setOrders(o);
+        setTodaySlots(t);
+      } else {
+        const [o, s, t, p] = await Promise.all([fetchOrders(), fetchTimeSlots(), fetchDaySlots(today), fetchAdminPizzas()]);
+        if (myGeneration !== generation.current) return;
+        setOrders(o);
+        setUpcomingSlots(s);
+        setTodaySlots(t);
+        setPizzas(p);
+      }
       setUpdatedAt(new Date());
       setOffline(false);
     } catch (err) {
@@ -226,9 +233,10 @@ export default function Service() {
     } finally {
       inFlight.current = false;
       setLoading(false);
-      if (reloadPending.current) {
-        reloadPending.current = false;
-        loadRef.current();
+      const pending = reloadPending.current;
+      if (pending) {
+        reloadPending.current = null;
+        loadRef.current(pending);
       }
     }
   }, [fail]);
@@ -271,7 +279,7 @@ export default function Service() {
   }, [soundOn]);
 
   const live = useLiveOrders((event: LiveOrderEvent) => {
-    load();
+    load("orders");
     if (event.type !== "created") return;
     if (soundOnRef.current) playChime();
     toast.info("Nouvelle commande !");
@@ -425,7 +433,7 @@ export default function Service() {
               {soundOn ? <Bell className="size-4" aria-hidden /> : <BellOff className="size-4" aria-hidden />}
               Son {soundOn ? "activé" : "coupé"}
             </Button>
-            <Button variant="outline" size="icon" onClick={load} aria-label="Rafraîchir">
+            <Button variant="outline" size="icon" onClick={() => load()} aria-label="Rafraîchir">
               <RefreshCw className="size-4" />
             </Button>
           </>

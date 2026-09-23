@@ -1,7 +1,7 @@
 import { prisma } from "../prisma.js";
 import { getSettings, localDateKey, serviceWindows, SLOT_DURATION_MINUTES } from "./settings.js";
 
-type SlotData = { startsAt: Date; endsAt: Date; capacity: number };
+type SlotData = { startsAt: Date; endsAt: Date; capacity: number; service: string };
 
 /**
  * The slots that should exist from now on, according to ShopSettings: every
@@ -29,7 +29,7 @@ async function expectedUpcomingSlots(now: Date): Promise<SlotData[]> {
         startsAt.setHours(Math.floor(m / 60), m % 60, 0, 0);
         if (startsAt < now) continue;
         const endsAt = new Date(startsAt.getTime() + SLOT_DURATION_MINUTES * 60 * 1000);
-        slots.push({ startsAt, endsAt, capacity: settings.slotCapacity });
+        slots.push({ startsAt, endsAt, capacity: settings.slotCapacity, service: window.service });
       }
     }
   }

@@ -1,13 +1,13 @@
 import type { ShopSettings } from "@prisma/client";
 import { prisma } from "../prisma.js";
-import { getSettings, localDateKey } from "./settings.js";
+import { getSettings, localDateKey, type ServiceName } from "./settings.js";
 
 // Dough forecast: how many dough balls (one per pizza) to prepare for a
 // service, from bookings already taken and what the same weekday sold over
 // the past weeks, plus a safety margin learned from past forecast errors.
 // Plain statistics on purpose: every number can be explained on screen.
 
-export type Service = "LUNCH" | "DINNER";
+export type Service = ServiceName;
 export const SERVICES: Service[] = ["LUNCH", "DINNER"];
 
 const HISTORY_WEEKS = 8;
@@ -31,8 +31,13 @@ function startOfToday() {
   return d;
 }
 
-export function serviceOf(startsAt: Date, settings: ShopSettings): Service {
-  const minutes = startsAt.getHours() * 60 + startsAt.getMinutes();
+/**
+ * A slot's service: the one recorded when it was generated, or — for slots
+ * older than that column — derived from the current dinner start.
+ */
+export function serviceOf(slot: { startsAt: Date; service: string | null }, settings: ShopSettings): Service {
+  if (slot.service === "LUNCH" || slot.service === "DINNER") return slot.service;
+  const minutes = slot.startsAt.getHours() * 60 + slot.startsAt.getMinutes();
   return settings.dinnerOpen && minutes >= settings.dinnerStart ? "DINNER" : "LUNCH";
 }
 
@@ -45,25 +50,25 @@ export async function loadServiceData(from: Date, to: Date, settings: ShopSettin
   const [items, slots] = await Promise.all([
     prisma.orderItem.findMany({
       where: { order: { status: { not: "CANCELLED" }, timeSlot: { startsAt: { gte: from, lt: to } } } },
-      select: { quantity: true, order: { select: { timeSlot: { select: { startsAt: true } } } } },
+      select: { quantity: true, order: { select: { timeSlot: { select: { startsAt: true, service: true } } } } },
     }),
     prisma.timeSlot.findMany({
       where: { startsAt: { gte: from, lt: to } },
-      select: { startsAt: true, closed: true },
+      select: { startsAt: true, closed: true, service: true },
     }),
   ]);
 
   const sales = new Map<string, number>();
   for (const item of items) {
-    const startsAt = item.order.timeSlot.startsAt;
-    const k = key(localDateKey(startsAt), serviceOf(startsAt, settings));
+    const slot = item.order.timeSlot;
+    const k = key(localDateKey(slot.startsAt), serviceOf(slot, settings));
     sales.set(k, (sales.get(k) ?? 0) + item.quantity);
   }
 
   const open = new Set<string>();
   const bookable = new Set<string>();
   for (const slot of slots) {
-    const k = key(localDateKey(slot.startsAt), serviceOf(slot.startsAt, settings));
+    const k = key(localDateKey(slot.startsAt), serviceOf(slot, settings));
     open.add(k);
     if (!slot.closed) bookable.add(k);
   }

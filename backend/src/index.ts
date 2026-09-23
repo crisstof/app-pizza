@@ -22,8 +22,15 @@ import { ordersRouter } from "./routes/orders.js";
 
 const app = express();
 // Behind a reverse proxy, trust its X-Forwarded-For so req.ip (used by the
-// login lockouts) is the visitor's address, not the proxy's.
-if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY));
+// login lockouts) is the visitor's address, not the proxy's. A hop count
+// ("1") or any of Express's forms ("loopback", "true", an IP/subnet list).
+const trustProxy = process.env.TRUST_PROXY?.trim();
+if (trustProxy) {
+  app.set(
+    "trust proxy",
+    /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy === "true" ? true : trustProxy
+  );
+}
 app.use(cors({ origin: process.env.FRONTEND_URL ?? "http://localhost:5173", credentials: true }));
 app.use(cookieParser());
 app.use(express.json());

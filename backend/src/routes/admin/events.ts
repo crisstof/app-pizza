@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { onOrderEvent } from "../../lib/events.js";
+import { isStaff } from "../../lib/staffAuth.js";
 
 export const adminEventsRouter = Router();
 
@@ -20,11 +21,21 @@ adminEventsRouter.get("/", (req, res) => {
   const unsubscribe = onOrderEvent((event) => {
     res.write(`event: order\ndata: ${JSON.stringify(event)}\n\n`);
   });
-  // Comment lines keep proxies from closing an idle connection.
-  const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS);
-
-  req.on("close", () => {
+  function stop() {
     clearInterval(heartbeat);
     unsubscribe();
-  });
+  }
+  // Comment lines keep proxies from closing an idle connection. The session
+  // is re-checked each time: once it expires or STAFF_PASSWORD changes, the
+  // stream ends (and the browser's reconnect then gets a 401).
+  const heartbeat = setInterval(() => {
+    if (!isStaff(req)) {
+      stop();
+      res.end();
+      return;
+    }
+    res.write(": ping\n\n");
+  }, HEARTBEAT_MS);
+
+  req.on("close", stop);
 });

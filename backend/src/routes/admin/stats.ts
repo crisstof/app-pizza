@@ -33,7 +33,6 @@ function loadOrders(from: Date, to: Date) {
     select: {
       status: true,
       totalCents: true,
-      clientId: true,
       timeSlot: { select: { startsAt: true } },
       items: { select: { quantity: true, unitPriceCents: true, pizza: { select: { name: true } } } },
     },
@@ -49,7 +48,6 @@ function summarize(orders: OrderRow[]) {
     pizzas: kept.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0),
     averageBasketCents: kept.length ? Math.round(revenueCents / kept.length) : 0,
     cancelRate: orders.length ? (orders.length - kept.length) / orders.length : 0,
-    clients: new Set(kept.map((o) => o.clientId)).size,
   };
 }
 
@@ -59,19 +57,21 @@ adminStatsRouter.get("/", async (req, res) => {
   const requested = Number(req.query.days);
   const days = PERIODS.includes(requested) ? requested : 28;
   const now = new Date();
-  const from = addDays(startOfDay(now), -(days - 1));
+  const today = startOfDay(now);
+  // Per day for short periods; per week (12 whole Monday-started weeks, the
+  // last one being the current week) for the long one, so no bar is cut.
+  const byWeek = days > 28;
+  const from = byWeek ? addDays(today, -((today.getDay() + 6) % 7) - 7 * (days / 7 - 1)) : addDays(today, -(days - 1));
+  // The previous period covers exactly as much time, so a trend compares
+  // like with like even while today (or this week) is still under way.
   const previousFrom = addDays(from, -days);
+  const previousTo = new Date(previousFrom.getTime() + (now.getTime() - from.getTime()));
 
-  const [orders, previousOrders] = await Promise.all([loadOrders(from, now), loadOrders(previousFrom, from)]);
+  const [orders, previousOrders] = await Promise.all([loadOrders(from, now), loadOrders(previousFrom, previousTo)]);
   const kept = orders.filter((o) => o.status !== "CANCELLED");
 
-  // Revenue per day (short periods) or per week (12 weeks), gaps included.
-  const byWeek = days > 28;
   const buckets = new Map<string, { revenueCents: number; orders: number; pizzas: number }>();
-  // Weekly buckets start on the Monday of the first week, so the current
-  // (partial) week always gets its own bucket.
-  const firstBucket = byWeek ? addDays(from, -((from.getDay() + 6) % 7)) : from;
-  for (let d = new Date(firstBucket); d <= now; d = addDays(d, byWeek ? 7 : 1)) {
+  for (let d = new Date(from); d <= now; d = addDays(d, byWeek ? 7 : 1)) {
     buckets.set(byWeek ? weekKey(d) : localDateKey(d), { revenueCents: 0, orders: 0, pizzas: 0 });
   }
   for (const o of kept) {

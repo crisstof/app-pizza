@@ -103,6 +103,10 @@ model TimeSlot {
   // Closed by staff (rush, holiday, hours changed): hidden from customers,
   // existing orders stay valid.
   closed    Boolean  @default(false)
+  // "LUNCH" | "DINNER", set when the slot is generated so later changes to
+  // the opening hours don't reclassify past sales (dough forecast). Null on
+  // slots created before this column: classified by the current hours.
+  service   String?
 
   orders Order[]
 

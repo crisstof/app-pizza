@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { attachClientIfPresent, requireAuth } from "../lib/auth.js";
+import { attachClientIfPresent, normalizedEmail, requireAuth } from "../lib/auth.js";
 import { emitOrderEvent } from "../lib/events.js";
 import { requireStaff } from "../lib/staffAuth.js";
 import { prisma } from "../prisma.js";
@@ -58,7 +58,7 @@ class UnavailablePizzaError extends Error {
 
 const createOrderSchema = z.object({
   clientName: z.string().min(1).optional(),
-  clientEmail: z.string().email().optional(),
+  clientEmail: normalizedEmail().optional(),
   clientPhone: z.string().optional(),
   timeSlotId: z.string(),
   items: z

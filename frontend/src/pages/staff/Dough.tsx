@@ -378,8 +378,7 @@ function MarginSetting({ current }: { current: ServiceForecast | undefined }) {
     e.preventDefault();
     setSaving(true);
     try {
-      const settings = await fetchShopSettings();
-      await saveShopSettings({ ...settings, doughMarginPercent: Number(value) });
+      await saveShopSettings({ doughMarginPercent: Number(value) });
       toast.success("Marge enregistrée");
     } catch (err) {
       fail(err);

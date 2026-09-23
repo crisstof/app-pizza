@@ -92,8 +92,9 @@ export function uploadPizzaPhoto(id: string, file: File) {
 
 // Hours and slots
 export const fetchShopSettings = () => api<ShopSettings>("/api/admin/settings");
-export const saveShopSettings = (settings: ShopSettings) =>
-  api<ShopSettings>("/api/admin/settings", jsonBody("PUT", settings));
+/** Partial update: send only the fields this screen edits. */
+export const saveShopSettings = (changes: Partial<ShopSettings>) =>
+  api<ShopSettings>("/api/admin/settings", jsonBody("PATCH", changes));
 export const fetchDaySlots = (date: string) =>
   api<TimeSlot[]>(`/api/admin/time-slots?date=${encodeURIComponent(date)}`);
 export const updateSlot = (id: string, patch: { capacity?: number; closed?: boolean }) =>
@@ -117,7 +118,6 @@ export type StatsSummary = {
   pizzas: number;
   averageBasketCents: number;
   cancelRate: number;
-  clients: number;
 };
 export type Stats = {
   days: number;
