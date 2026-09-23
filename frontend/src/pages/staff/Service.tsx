@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, ChevronRight, Clock, Euro, Flame, Pizza as PizzaIcon, ReceiptText, RefreshCw, WifiOff } from "lucide-react";
+import { AlertTriangle, ChevronRight, Clock, Euro, Flame, Pizza as PizzaIcon, ReceiptText, RefreshCw, Wheat, WifiOff } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { ApiError, fetchOrders, fetchTimeSlots, type Order, type TimeSlot } from "@/api";
@@ -15,7 +15,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatDayLong, formatPrice, formatTime, toDateKey } from "@/lib/format";
 import { useNow } from "@/lib/useNow";
-import { fetchAdminPizzas, fetchDaySlots, updatePizza, updateSlot, type AdminPizza } from "@/staffApi";
+import {
+  fetchAdminPizzas,
+  fetchDaySlots,
+  fetchDoughForecast,
+  updatePizza,
+  updateSlot,
+  type AdminPizza,
+  type DayForecast,
+} from "@/staffApi";
 
 const AUTO_REFRESH_MS = 30_000;
 const SOON_WINDOW_MS = 60 * 60 * 1000;
@@ -63,13 +71,40 @@ function StatTile({
 
 type PrepSlot = { startsAt: string; lines: { name: string; quantity: number }[] };
 
+/** Tomorrow's dough forecast, linking to the Pâtons page. */
+function DoughBanner({ tomorrow }: { tomorrow: DayForecast | undefined }) {
+  if (!tomorrow) return null;
+  return (
+    <Link
+      to="/pizzaiolo/pates"
+      className="group mb-8 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border bg-card px-4 py-3 text-sm transition-colors hover:border-primary/60"
+    >
+      <Wheat className="size-5 shrink-0 text-accent" aria-hidden />
+      {tomorrow.closed ? (
+        <span className="font-semibold">Demain : fermé, pas de pâte à préparer</span>
+      ) : (
+        <span>
+          <span className="font-semibold">Demain : {tomorrow.total} pâtons à préparer</span>
+          <span className="text-muted-foreground">
+            {" "}
+            · {tomorrow.services.map((s) => `${s.service === "LUNCH" ? "midi" : "soir"} ${s.recommended}`).join(" · ")}
+          </span>
+        </span>
+      )}
+      <span className="ml-auto flex items-center gap-1 text-muted-foreground group-hover:text-foreground">
+        Noter les pâtons d'aujourd'hui <ChevronRight className="size-4" aria-hidden />
+      </span>
+    </Link>
+  );
+}
+
 function KitchenPanel({ prep }: { prep: PrepSlot[] }) {
   const max = Math.max(1, ...prep.flatMap((s) => s.lines.map((l) => l.quantity)));
 
   return (
     <Card id="cuisine" className="scroll-mt-6 p-5">
       <h2 className="flex items-center gap-2 text-lg font-semibold">
-        <Flame className="size-5 text-accent" aria-hidden /> Pâtons à préparer
+        <Flame className="size-5 text-accent" aria-hidden /> À enfourner
       </h2>
       {prep.length === 0 ? (
         <p className="text-sm text-muted-foreground">Rien à préparer pour l'instant.</p>
@@ -113,6 +148,7 @@ export default function Service() {
   const [upcomingSlots, setUpcomingSlots] = useState<TimeSlot[]>([]);
   const [todaySlots, setTodaySlots] = useState<TimeSlot[]>([]);
   const [pizzas, setPizzas] = useState<AdminPizza[]>([]);
+  const [doughForecast, setDoughForecast] = useState<DayForecast[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [offline, setOffline] = useState(false);
@@ -167,6 +203,14 @@ export default function Service() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [load]);
+
+  // Dough forecast: heavier query, and it only moves with new bookings, so
+  // once on arrival rather than with every 30-second refresh.
+  useEffect(() => {
+    fetchDoughForecast()
+      .then(setDoughForecast)
+      .catch(() => {}); // Banner only: the service page works without it.
+  }, []);
 
   const actions = useOrderActions((updated) => {
     generation.current++;
@@ -331,6 +375,8 @@ export default function Service() {
           }
         />
       </section>
+
+      <DoughBanner tomorrow={doughForecast?.[1]} />
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <section className="min-w-0">

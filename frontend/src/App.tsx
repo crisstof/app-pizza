@@ -6,6 +6,7 @@ import OrderTracking from "@/pages/OrderTracking";
 import SignIn from "@/pages/SignIn";
 import SignUp from "@/pages/SignUp";
 import Clients from "@/pages/staff/Clients";
+import Dough from "@/pages/staff/Dough";
 import MenuAdmin from "@/pages/staff/MenuAdmin";
 import Orders from "@/pages/staff/Orders";
 import Service from "@/pages/staff/Service";
@@ -29,6 +30,7 @@ function App() {
           <Route path="/pizzaiolo" element={<StaffLayout />}>
             <Route index element={<Service />} />
             <Route path="commandes" element={<Orders />} />
+            <Route path="pates" element={<Dough />} />
             <Route path="carte" element={<MenuAdmin />} />
             <Route path="creneaux" element={<Slots />} />
             <Route path="clients" element={<Clients />} />

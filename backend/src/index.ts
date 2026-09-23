@@ -8,6 +8,7 @@ import { requireStaff, staffPasswordConfigured } from "./lib/staffAuth.js";
 import { refreshUpcomingTimeSlots } from "./lib/timeSlots.js";
 import { UPLOADS_DIR } from "./lib/uploads.js";
 import { adminClientsRouter } from "./routes/admin/clients.js";
+import { adminDoughRouter } from "./routes/admin/dough.js";
 import { adminOrdersRouter } from "./routes/admin/orders.js";
 import { adminPizzasRouter } from "./routes/admin/pizzas.js";
 import { adminTimeSlotsRouter } from "./routes/admin/timeSlots.js";
@@ -42,6 +43,7 @@ app.use("/api/admin", requireStaff);
 app.use("/api/admin/pizzas", adminPizzasRouter);
 app.use("/api/admin/orders", adminOrdersRouter);
 app.use("/api/admin/clients", adminClientsRouter);
+app.use("/api/admin/dough", adminDoughRouter);
 app.use("/api/admin", adminTimeSlotsRouter);
 
 app.use(errorHandler);
